@@ -6,7 +6,11 @@ Each hidden post collapses to a one-line bar, **"control. hid a post · Looks li
 so nothing is ever lost.
 
 The AI runs **on your own computer**: a 34 MB sentence-embedding model ships inside the extension. It's free per
-user, private (posts never leave the browser), and takes about 5 ms per post. Claude is optional.
+user and keeps posts local when Claude is disabled. The original encoder benchmark reports about 5 ms per post;
+actual browser latency varies. Claude is optional and sends reviewed posts to Anthropic when enabled.
+
+**Personal learning:** teach the filter with explicit show/hide corrections. It remembers examples on your device
+and uses the existing embeddings to adapt, without another model download, cloud training, or API charges.
 
 Built for a hackathon, **Track 4: AI-Powered Consumer Products for 1 Billion People**, which is judged on
 **innovation, scale and real-world application**. The product is ambient: there's no new app, and the feed you
@@ -44,12 +48,14 @@ linked_out/
 │   │   └── content.css
 │   ├── offscreen/
 │   │   ├── offscreen.html    # hidden page that hosts the model (service workers can't)
-│   │   └── offscreen.js      # Transformers.js: embeds topics + posts, judges them with local-filter.js
+│   │   ├── feedback-store.js # extension-owned IndexedDB for persistent corrections and undo
+│   │   └── offscreen.js      # encoder + serialized local classification and feedback operations
 │   ├── shared/
 │   │   ├── settings.js       # defaults, load/save, migration of old values, cache-key hash
 │   │   ├── rules.js          # deterministic filters: promoted, social activity, suggested, keywords
 │   │   ├── intent.js         # parses free-text instructions → hide/show topics (+ genre example anchors)
 │   │   ├── local-filter.js   # z-score decision logic, thresholds, running per-topic stats (pure, unit-tested)
+│   │   ├── feedback-memory.js # bounded nearest-neighbor correction memory; no encoder weight updates
 │   │   ├── prompt.js         # Claude prompt, JSON schema, verdict parser
 │   │   └── ui.css
 │   ├── options/              # settings page; shows "How control. understood you"
@@ -65,7 +71,7 @@ linked_out/
 │   ├── fetch-models.mjs      # downloads the model from Hugging Face into extension/models/
 │   └── make-icons.py
 └── tests/
-    ├── unit/                 # rules, settings/prompt, intent parser + decision logic
+    ├── unit/                 # rules, settings, intent, feedback matching, routing, persistence and cache checks
     ├── e2e/                  # Playwright: real extension vs. fixture feeds; mock Anthropic API; real local model
     └── fixtures/             # feed.html (classic markup), feed-2026.html (2026 markup)
 ```
@@ -78,19 +84,24 @@ linked_out/
 | **2. Hide by keyword** | `shared/rules.js` | Word-boundary match, plurals, `intern*` wildcards, phrases. |
 | **3. "Describe what you want"** | `intent.js`, `local-filter.js`, `offscreen/`, `background/` | On-device model (default) or Claude. |
 | **4. Home page layout**: blank home, hide sidebars | `content/` | CSS on tagged landmarks. |
-| Hidden-post bar with **Show anyway**, optional blur while checking | `content/content.js` | |
+| Hidden-post bar with **Show anyway**, optional blur while checking | `content/content.js` | Reveal without teaching. |
+| **Personal feedback**: show/hide corrections, undo and reset | `feedback-memory.js`, `feedback-store.js`, content/options UI | Local examples scoped to saved instructions; reuses gte-small. |
 
 ## Architecture
 
 ```
-post ─▶ 1. rules (regex)                 instant                          ─▶ hide, or continue
-     ─▶ 2. verdict cache                 key = config hash + post URN     ─▶ reuse
-     ─▶ 3. on-device model (gte-small)   offscreen page, ~5 ms/post       ─▶ hide / show (+ "uncertain" flag)
-     ─▶ 4. Claude double-check           optional, uncertain posts only (~14%), needs the user's API key
-     ─▶ any error: fail open (show the post, report in popup)
+post ─▶ 1. explicit rules               promoted / keywords / social activity → hide, or continue
+     ─▶ 2. verdict cache                config + feedback revision + post URN + text hash
+     ─▶ 3. gte-small embedding          runs in the offscreen document
+            ├─ personal correction      exact text, or strong agreement among similar corrections
+            └─ topic filter             original anchor similarities + z-score logic
+     ─▶ 4. Claude double-check          optional; only uncertain local decisions
+     ─▶ any classification error: show the post
+
+explicit feedback ─▶ embed corrected post ─▶ save locally ─▶ increment revision ─▶ recheck open feeds
 ```
 
-**How step 3 works:**
+**How the baseline topic filter works:**
 
 1. `intent.js` splits the instructions into clauses and classifies each one as *hide* ("no X", "hide X"), *only*
    ("only X"), or *more of* ("show me more X", which never hides anything). It strips filler words to leave a topic.
@@ -180,3 +191,37 @@ Reset does not change other instruction profiles. Uninstalling the extension rem
 Each feedback change publishes a revision, clears verdict caches across tabs, and rejects older in-flight
 answers. Corrections survive extension restarts. This is example-based personalization; encoder weights do
 not change. Real-feed evaluation is still needed to measure generalization and added latency.
+
+### Try personal learning
+
+1. Load this branch's `extension/` folder, select **On-device**, and save your filtering instructions.
+2. For a fully local demo, turn off **Double-check uncertain posts with Claude**.
+3. On an incorrectly AI-hidden post, click **This should be shown**. On a visible unwanted post, click
+   **Hide more like this**. Keyword/promoted/social rules do not offer AI teaching controls.
+4. The feed is rechecked. The same corrected text now follows your explicit decision under those instructions.
+5. To demonstrate generalization, correct at least three distinct, closely related posts with the same decision,
+   then inspect an unseen similar post. Three corrections alone do not guarantee a match: similarity and
+   conflicting-example checks must also pass.
+6. Reload the extension to check persistence. Use **Undo correction** after saving, or reset the current profile
+   in settings. Changing the saved instruction text creates a separate profile.
+
+### Validation of the feedback implementation
+
+`npm test` passed **42 tests** when this feature was added. New tests cover exact corrections, unseen-vector
+matching, conflicting examples, profile/model isolation, replacement, eviction, undo, serialized feedback,
+simulated restart persistence, failed writes, text-aware cache keys, and stale in-flight results.
+
+Integration tests mock model embeddings and the persistent store; they do not measure real-model accuracy or
+prove IndexedDB/browser behavior end to end. Full browser testing, real-feed evaluation, and feedback-search
+latency measurements remain to be done. The model benchmark above describes the original filter and must not
+be interpreted as an accuracy result for personalized decisions.
+
+### Scaling and boundaries
+
+Classification and feedback lookup run on each user's device. There is no shared feedback database and one
+person's corrections do not update anyone else's installation. Model and extension distribution still require
+hosting/store infrastructure; a billion-user deployment is an architectural projection, not a tested capacity.
+
+The memory cap is **1,000 corrections across all instruction profiles**, plus one undo record. Text and metadata
+can use considerably more storage than the embedding payload alone. Feedback lookup scans compatible stored
+examples and sorts their similarities; no vector database, new neural model, or online training service is used.
