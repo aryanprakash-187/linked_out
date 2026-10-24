@@ -1,0 +1,140 @@
+/* control. — injected into linkedin.com. Everything is scoped to classes on
+   <html> or data-control attributes the content script sets, so with the
+   extension switched off this file changes nothing. */
+
+/* ---------- posts ---------- */
+
+[data-control='hidden'] > :not(.control-bar) {
+  display: none !important;
+}
+
+[data-control='pending'] > :not(.control-bar) {
+  filter: blur(6px);
+  opacity: 0.35;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Deliberately quiet: a hidden post should cost a glance, not attention. */
+.control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 5px 6px 5px 14px;
+  border: 1px dashed var(--color-border-faint, rgba(0, 0, 0, 0.15));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-low-emphasis, rgba(0, 0, 0, 0.6));
+  font:
+    12px/1.4 -apple-system,
+    system-ui,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+
+[data-control='pending'] > .control-bar {
+  margin-bottom: 4px;
+  border-color: transparent;
+}
+
+.control-bar__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control-bar__label b {
+  color: var(--color-text, rgba(0, 0, 0, 0.9));
+  font-weight: 600;
+}
+
+.control-bar__show {
+  flex: none;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.control-bar__show:hover,
+.control-bar__show:focus-visible {
+  background: var(--color-background-container-tint, rgba(0, 0, 0, 0.06));
+  color: var(--color-text, rgba(0, 0, 0, 0.9));
+}
+
+/* ---------- home page layout ---------- */
+
+/* Until settings load, keep the home page hidden so "blank home" never
+   flashes the feed. Removed within milliseconds. */
+html.control-booting main:not(:has([data-control-nav], #global-nav)),
+html.control-booting [data-testid='mainFeed'],
+html.control-booting .scaffold-layout__main,
+html.control-booting .scaffold-layout__sidebar,
+html.control-booting .scaffold-layout__aside {
+  visibility: hidden !important;
+}
+
+/* Blank home: everything invisible except the top bar, which the content
+   script tags with data-control-nav (control-has-nav is only set once it's found). */
+html.control-blank-home,
+html.control-blank-home body {
+  background: #fff !important;
+}
+
+html.control-blank-home.control-has-nav body {
+  visibility: hidden !important;
+  overflow: hidden !important; /* no scrolling, so no infinite feed loading */
+}
+
+html.control-blank-home [data-control-nav],
+html.control-blank-home #artdeco-modal-outlet,
+html.control-blank-home [role='dialog'] {
+  visibility: visible !important;
+}
+
+/* Belt and braces (and the only mechanism if the top bar wasn't found):
+   remove the feed and the columns around it. */
+html.control-blank-home main:not(:has([data-control-nav])),
+html.control-blank-home [data-testid='mainFeed'],
+html.control-blank-home [data-control-sidebar],
+html.control-blank-home .scaffold-layout__main,
+html.control-blank-home .scaffold-layout__sidebar,
+html.control-blank-home .scaffold-layout__aside,
+html.control-blank-home .scaffold-finite-scroll {
+  display: none !important;
+}
+
+/* Sidebars become empty space rather than disappearing, so the feed keeps
+   its width and position in LinkedIn's grid. */
+html.control-hide-left .scaffold-layout__sidebar,
+html.control-hide-left [data-control-sidebar='left'],
+html.control-hide-right .scaffold-layout__aside,
+html.control-hide-right [data-control-sidebar='right'] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* ---------- debug outlines (Settings → Debug) ---------- */
+
+html.control-debug [data-control='shown'] {
+  outline: 2px solid #2e7d32;
+}
+html.control-debug [data-control='hidden'] {
+  outline: 2px solid #c62828;
+}
+html.control-debug [data-control='pending'] {
+  outline: 2px dashed #f9a825;
+}
+html.control-debug [data-control='revealed'] {
+  outline: 2px dotted #1565c0;
+}

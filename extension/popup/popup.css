@@ -1,0 +1,46 @@
+body {
+  width: 320px;
+  padding: 14px 16px 16px;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.top .brand {
+  font-size: 20px;
+}
+
+.master {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.status {
+  margin: 8px 0 6px;
+  font-size: 13px;
+}
+
+#ai-error {
+  margin: 6px 0;
+}
+
+#controls {
+  margin-top: 4px;
+}
+
+body.off #controls {
+  opacity: 0.45;
+}
+
+footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}

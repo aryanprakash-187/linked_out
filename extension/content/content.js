@@ -1,0 +1,303 @@
+// Content script for linkedin.com. Applies the layout controls (blank home,
+// sidebars) and decides, post by post, what stays on the home feed:
+//   1. modes (promoted, network activity, suggested)   instant
+//   2. keywords                                        instant
+//   3. AI filter (your own words)                      async, batched in background
+(function () {
+  const control = globalThis.control;
+  const { linkedin, rules } = control;
+  const S = control.settings;
+
+  const AI_TIMEOUT_MS = 30000;
+  const html = document.documentElement;
+
+  const state = {
+    settings: null,
+    compiledKeywords: [],
+    aiKey: '',
+    generation: 0, // bumped on every settings change so posts are re-judged
+    path: location.pathname,
+    aiVerdicts: new Map(), // `${aiKey}:${urn}` -> { decision, reason }
+    aiInflight: new Map(), // same key -> Promise
+    lastAiError: null,
+  };
+
+  function log(...args) {
+    if (state.settings && state.settings.debug) console.log('[control.]', ...args);
+  }
+
+  // Hide the home page until settings load so "blank home" never flashes
+  // the feed. Removed as soon as settings are applied (or after 2.5s).
+  if (linkedin.isHomePath(location.pathname)) html.classList.add('control-booting');
+  setTimeout(() => html.classList.remove('control-booting'), 2500);
+
+  // ---------- layout (feature 4) ----------
+
+  function applyLayout() {
+    const s = state.settings;
+    const onHome = linkedin.isHomePath(location.pathname);
+    const on = (cond) => Boolean(s.enabled && onHome && cond);
+    markLandmarks();
+    html.classList.toggle('control-blank-home', on(s.layout.blankHome));
+    html.classList.toggle('control-hide-left', on(s.layout.hideLeftSidebar));
+    html.classList.toggle('control-hide-right', on(s.layout.hideRightSidebar));
+    html.classList.toggle('control-debug', Boolean(s.debug));
+    html.classList.remove('control-booting');
+    html.setAttribute('data-control-ready', '');
+  }
+
+  // Tags the top bar and sidebars so the CSS can find them even when
+  // LinkedIn's class names are hashed. Re-run on every scan because LinkedIn
+  // re-renders; cheap when the tags are already in place.
+  function markLandmarks() {
+    if (!linkedin.isHomePath(location.pathname)) return;
+    if (!document.querySelector('[data-control-nav]')) {
+      const bar = linkedin.findTopBar();
+      if (bar) bar.setAttribute('data-control-nav', '');
+    }
+    // Only blank the whole page when the top bar was found, so blank home can
+    // never leave you without navigation.
+    html.classList.toggle('control-has-nav', Boolean(document.querySelector('[data-control-nav]')));
+    const l = state.settings.layout;
+    const needLeft = (l.hideLeftSidebar || l.blankHome) && !document.querySelector('[data-control-sidebar="left"]');
+    const needRight = (l.hideRightSidebar || l.blankHome) && !document.querySelector('[data-control-sidebar="right"]');
+    if (needLeft || needRight) {
+      const { left, right } = linkedin.findSidebars();
+      if (needLeft) for (const el of left) el.setAttribute('data-control-sidebar', 'left');
+      if (needRight) for (const el of right) el.setAttribute('data-control-sidebar', 'right');
+    }
+  }
+
+  // ---------- post decorations ----------
+
+  function placeholderOf(el) {
+    const first = el.firstElementChild;
+    return first && first.classList.contains('control-bar') ? first : null;
+  }
+
+  function setBar(el, kind, text) {
+    let bar = placeholderOf(el);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'control-bar';
+      const label = document.createElement('span');
+      label.className = 'control-bar__label';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'control-bar__show';
+      button.textContent = 'Show anyway';
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.setAttribute('data-control-override', '1');
+        el.setAttribute('data-control', 'revealed');
+        bar.remove();
+      });
+      bar.append(label, button);
+      el.prepend(bar);
+    }
+    bar.dataset.kind = kind;
+    const label = bar.querySelector('.control-bar__label');
+    label.textContent = '';
+    const brand = document.createElement('b');
+    brand.textContent = 'control.';
+    label.append(brand, ' ' + text);
+    bar.querySelector('.control-bar__show').hidden = kind === 'pending';
+  }
+
+  function markHidden(el, reason) {
+    el.setAttribute('data-control', 'hidden');
+    setBar(el, 'hidden', 'hid a post · ' + reason);
+  }
+
+  function markPending(el) {
+    el.setAttribute('data-control', 'pending');
+    setBar(el, 'pending', 'is checking this post…');
+  }
+
+  function markShown(el) {
+    el.setAttribute('data-control', 'shown');
+    const bar = placeholderOf(el);
+    if (bar) bar.remove();
+  }
+
+  function clearPost(el) {
+    el.removeAttribute('data-control');
+    el.removeAttribute('data-control-sig');
+    el.removeAttribute('data-control-urn');
+    el.removeAttribute('data-control-reason');
+    const bar = placeholderOf(el);
+    if (bar) bar.remove();
+  }
+
+  // ---------- deciding ----------
+
+  function decide(el, post) {
+    const s = state.settings;
+    const ruled = rules.evaluateRules(post, s, state.compiledKeywords);
+    if (ruled) {
+      log('hide', ruled.kind, post.urn, ruled.reason);
+      el.setAttribute('data-control-reason', ruled.reason);
+      return markHidden(el, ruled.reason);
+    }
+    if (!S.isAiActive(s)) return markShown(el);
+
+    const cacheKey = state.aiKey + ':' + post.urn;
+    const cached = state.aiVerdicts.get(cacheKey);
+    if (cached) {
+      if (cached.decision === 'hide') {
+        el.setAttribute('data-control-reason', cached.reason);
+        return markHidden(el, cached.reason);
+      }
+      return markShown(el);
+    }
+    if (s.aiFilter.holdWhileChecking) markPending(el);
+    else markShown(el);
+    requestVerdict(post, cacheKey);
+  }
+
+  function requestVerdict(post, cacheKey) {
+    if (state.aiInflight.has(cacheKey)) return;
+    const message = {
+      type: 'control:classify',
+      item: { id: post.urn, author: post.author, text: post.text },
+    };
+    const timeout = new Promise((resolve) =>
+      setTimeout(() => resolve({ decision: 'show', error: 'timeout' }), AI_TIMEOUT_MS),
+    );
+    const failed = (err) => ({ decision: 'show', error: String(err && err.message ? err.message : err) });
+    let request;
+    try {
+      request = chrome.runtime.sendMessage(message).catch(failed);
+    } catch (err) {
+      // Throws synchronously when control. was updated or reloaded while this
+      // tab stayed open ("Extension context invalidated").
+      request = Promise.resolve(failed(err));
+    }
+    const p = Promise.race([request, timeout]).then((res) => {
+      state.aiInflight.delete(cacheKey);
+      res = res || { decision: 'show', error: 'no response' };
+      if (!cacheKey.startsWith(state.aiKey + ':')) return; // settings changed meanwhile
+      if (res.error) {
+        // Fail open: an AI problem never hides posts. The error shows in the
+        // popup; the post is retried after the next settings or key change.
+        state.lastAiError = res.error;
+        log('AI error', post.urn, res.error);
+      } else {
+        state.aiVerdicts.set(cacheKey, {
+          decision: res.decision,
+          reason: res.reason || 'Filtered by your prompt',
+        });
+      }
+      // Update every element showing this post (LinkedIn may have swapped it).
+      // Posts waiting on this verdict are 'pending' (blurred) or, with
+      // "blur while checking" off, already 'shown'.
+      for (const el of linkedin.findPosts(document)) {
+        if (el.getAttribute('data-control-urn') !== post.urn) continue;
+        const status = el.getAttribute('data-control');
+        if (status !== 'pending' && status !== 'shown') continue;
+        if (res.error) markShown(el);
+        else el.removeAttribute('data-control-sig'); // re-judged from the cache on the next scan
+      }
+      scheduleScan();
+    });
+    state.aiInflight.set(cacheKey, p);
+  }
+
+  function processPost(el) {
+    if (el.getAttribute('data-control-override') === '1') return;
+    const s = state.settings;
+    const sig = state.generation + '|' + linkedin.getElementKey(el);
+
+    if (el.getAttribute('data-control-sig') === sig) {
+      // Already judged. LinkedIn sometimes re-renders a post's children, which
+      // removes our bar; put it back if so.
+      const status = el.getAttribute('data-control');
+      if (status === 'hidden' && !placeholderOf(el)) markHidden(el, el.getAttribute('data-control-reason') || 'Hidden');
+      if (status === 'pending' && !placeholderOf(el)) markPending(el);
+      return;
+    }
+
+    // New post, or a recycled element now showing a different post.
+    if (el.hasAttribute('data-control')) clearPost(el);
+    if (!s.enabled || !linkedin.isFeedPath(location.pathname)) return;
+    // Nobody sees posts on a blank home page; don't spend AI calls on them.
+    if (html.classList.contains('control-blank-home')) return;
+
+    const post = linkedin.extractPost(el);
+    if (!post.ready) return; // not rendered yet; the observer will call again
+    el.setAttribute('data-control-sig', sig);
+    el.setAttribute('data-control-urn', post.urn);
+    decide(el, post);
+  }
+
+  // ---------- scanning ----------
+
+  let scanTimer = null;
+  function scheduleScan() {
+    if (scanTimer) return;
+    scanTimer = setTimeout(() => {
+      scanTimer = null;
+      scan();
+    }, 60);
+  }
+
+  function scan() {
+    if (!state.settings) return;
+    if (location.pathname !== state.path) {
+      state.path = location.pathname;
+      applyLayout();
+    } else {
+      markLandmarks();
+    }
+    for (const el of linkedin.findPosts(document)) processPost(el);
+  }
+
+  function resetAll() {
+    for (const el of document.querySelectorAll('[data-control], [data-control-override]')) {
+      el.removeAttribute('data-control-override');
+      clearPost(el);
+    }
+  }
+
+  function applySettings(settings) {
+    state.settings = settings;
+    state.generation++;
+    state.compiledKeywords = rules.compileKeywords(settings.keywords.list);
+    state.aiKey = S.aiConfigKey(settings.aiFilter);
+    state.lastAiError = null;
+    applyLayout();
+    resetAll();
+    scan();
+  }
+
+  // ---------- popup stats ----------
+
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (!msg || msg.type !== 'control:stats') return;
+    const count = (v) => document.querySelectorAll(`[data-control="${v}"]`).length;
+    sendResponse({
+      onFeed: linkedin.isFeedPath(location.pathname),
+      hidden: count('hidden'),
+      pending: count('pending'),
+      shown: count('shown') + count('revealed'),
+      aiError: state.lastAiError,
+    });
+  });
+
+  // ---------- boot ----------
+
+  S.load().then((settings) => {
+    applySettings(settings);
+    new MutationObserver(scheduleScan).observe(html, { childList: true, subtree: true });
+    // LinkedIn is a single-page app; catch navigations that don't mutate much.
+    setInterval(() => {
+      if (location.pathname !== state.path) scan();
+    }, 500);
+  });
+  S.onChange(applySettings);
+  // A newly added API key should take effect without reloading LinkedIn.
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes[S.SECRETS_KEY] && state.settings) applySettings(state.settings);
+  });
+})();

@@ -1,0 +1,18 @@
+{
+  "name": "control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "control. — decide what gets your attention on LinkedIn.",
+  "scripts": {
+    "vendor": "node scripts/build-vendor.mjs",
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
+    "lint": "node scripts/check-manifest.mjs",
+    "zip": "node scripts/zip.mjs"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.56.1"
+  }
+}
