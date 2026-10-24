@@ -58,7 +58,7 @@ linked_out/
 │   ├── vendor/               # from `npm run vendor`: anthropic-sdk.js, transformers.min.js, ort/*.wasm (27 MB)
 │   └── icons/
 ├── eval/
-│   ├── data.mjs              # 60 hand-written LinkedIn-style posts, multi-label, + 10 filter scenarios
+│   ├── data.mjs              # 65 hand-written LinkedIn-style posts, multi-label, + 11 filter scenarios
 │   └── run.mjs               # scores the shipped intent.js + local-filter.js + model on that data
 ├── scripts/
 │   ├── build-vendor.mjs      # bundles/copies vendor libraries
@@ -96,7 +96,7 @@ post ─▶ 1. rules (regex)                 instant                          �
    ("only X"), or *more of* ("show me more X", which never hides anything). It strips filler words to leave a topic.
    The options page shows the result ("Only show: bioinformatics · Hide: hiring").
 2. Each topic gets **anchors**: the phrase, its parts ("AI and ML" → "AI", "ML"), and, for known LinkedIn genres
-   (engagement bait, humblebrags, course/webinar promos, new-job posts, student posts, hiring), a few example
+   (engagement bait, clickbait hooks, humblebrags, course/webinar promos, new-job posts, student posts, hiring), a few example
    phrases. Bare words like "humblebrag" embed poorly, and these anchors lifted tone filters from AUC ~0.70 to ~0.90.
 3. Topics and posts are embedded with **gte-small** (mean pooling, normalised). A post's similarity to a topic is
    its max cosine over that topic's anchors.

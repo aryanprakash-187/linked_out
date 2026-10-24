@@ -1,5 +1,5 @@
 // Hand-written LinkedIn-style posts with topic/tone tags. Multi-label.
-// Tags: ai, bio, crypto, newjob, student, humblebrag, bait, promo, hiring, politics, swe, sales
+// Tags: ai, bio, crypto, newjob, student, humblebrag, bait, hook, promo, hiring, politics, swe, sales
 export const POSTS = [
   // ai
   { t: ['ai'], text: "We just open-sourced our 7B code model. It beats models twice its size on HumanEval thanks to a new data-filtering pipeline. Paper and weights in the comments." },
@@ -67,6 +67,12 @@ export const POSTS = [
   { t: ['swe'], text: "TypeScript tip: use satisfies instead of type annotations for config objects. You keep the literal types and still get checking." },
   { t: ['swe'], text: "Our p99 latency dropped from 800ms to 120ms after we found an N+1 query hiding in the ORM. Always check your query logs." },
   { t: ['swe'], text: "Rust in production after one year: fewer outages, slower onboarding, and a compile time problem we're still fighting." },
+  // clickbait hooks
+  { t: ['hook'], text: "I was fired on a Tuesday. What my boss said next shocked me. 👇 (read till the end)" },
+  { t: ['hook'], text: "Stop using ChatGPT like this. 97% of people are making this mistake and don't even know it." },
+  { t: ['hook'], text: "Nobody talks about this, but it's the real reason you're not getting promoted. Thread 🧵" },
+  { t: ['hook'], text: "This one Excel trick saved me 10 hours a week. I can't believe I didn't know it sooner." },
+  { t: ['hook'], text: "Google just did something that will change the job market forever. Here's what you need to know." },
   // sales/marketing
   { t: ['sales'], text: "Cold email tip: your subject line should be 3 words or fewer. Our open rate went from 22% to 41%." },
   { t: ['sales'], text: "The best salespeople I know ask more questions than they answer. Discovery is everything." },
@@ -87,6 +93,7 @@ export const SCENARIOS = [
   { id: 'no-promo', instr: 'Hide posts promoting courses, webinars or newsletters.', mode: 'block', topics: ['promoting courses', 'webinars', 'newsletters'], tags: ['promo'], kind: 'genre' },
   { id: 'no-students', instr: 'Hide internship and student achievement posts.', mode: 'block', topics: ['internship', 'student achievement'], tags: ['student'], kind: 'genre' },
   { id: 'no-humblebrag', instr: 'No motivational stories or humblebrags.', mode: 'block', topics: ['motivational stories', 'humblebrags'], tags: ['humblebrag'], kind: 'tone' },
+  { id: 'no-clickbait', instr: 'No clickbait.', mode: 'block', topics: ['clickbait'], tags: ['hook', 'bait'], kind: 'tone' },
   { id: 'no-bait', instr: 'Hide engagement bait.', mode: 'block', topics: ['engagement bait'], tags: ['bait'], kind: 'tone' },
 ];
 

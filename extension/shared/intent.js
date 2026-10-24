@@ -25,6 +25,20 @@
       ],
     },
     {
+      // Sensational hooks that withhold the point to make you click "see more".
+      // ("clickbait" also matches the bait genre above, so it gets both sets.)
+      id: 'clickbait',
+      trigger: /click ?bait|hooks?\b|sensational|curiosity|rage ?bait/i,
+      anchors: [
+        "You won't believe what happened next",
+        'This one simple trick changed everything',
+        'Nobody is talking about this, and it will change your career',
+        'I was shocked when I found out the truth',
+        'Stop doing this immediately. Here is why',
+        '99% of people get this wrong',
+      ],
+    },
+    {
       id: 'humblebrag',
       trigger: /humble ?brag|motivational|inspirational|inspiring|rags to riches|life lessons?|hustle|guru|cringe|broetry|bragg/i,
       anchors: [
