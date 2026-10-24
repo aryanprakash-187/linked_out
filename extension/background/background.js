@@ -1,7 +1,12 @@
 // Background service worker. Receives posts from the content script that
 // need an AI verdict (feature 3), batches them, asks the configured model,
 // caches the answers, and records the last error for the popup.
-importScripts('../vendor/anthropic-sdk.js', '../shared/settings.js', '../shared/prompt.js', '../shared/chrome-ai.js');
+//
+// Providers:
+//   local      on-device sentence encoder (offscreen page). Default. Free.
+//              Optionally sends the posts it's unsure about to Claude.
+//   anthropic  every post goes to Claude with the user's API key.
+importScripts('../vendor/anthropic-sdk.js', '../shared/settings.js', '../shared/prompt.js');
 
 const control = globalThis.control;
 const S = control.settings;
@@ -115,45 +120,50 @@ async function classifyWithAnthropic(posts, settings) {
 }
 
 async function ensureOffscreen() {
-  if (!chrome.offscreen) throw new ControlError('unsupported', "Chrome's built-in AI isn't available in this browser.");
   const url = chrome.runtime.getURL('offscreen/offscreen.html');
   const existing = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [url] });
   if (existing.length) return;
-  await chrome.offscreen.createDocument({
-    url,
-    reasons: ['WORKERS'],
-    justification: "Run Chrome's built-in AI model to filter feed posts on-device.",
-  });
+  try {
+    await chrome.offscreen.createDocument({
+      url,
+      reasons: ['WORKERS'],
+      justification: 'Run the on-device AI model that filters feed posts.',
+    });
+  } catch (err) {
+    // Two batches can race to create it; only one document may exist.
+    if (!/single offscreen/i.test(String(err && err.message))) throw err;
+  }
 }
 
-async function classifyWithChromeAI(posts, settings) {
-  const payload = {
-    system: P.buildSystemPrompt(settings.aiFilter.instructions),
-    user: P.buildUserMessage(posts),
-    schema: P.VERDICT_SCHEMA,
-  };
-  let text;
-  if (typeof globalThis.LanguageModel !== 'undefined') {
-    text = await control.chromeAI.prompt(payload);
-  } else {
-    await ensureOffscreen();
-    const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'control:chrome-ai-prompt', payload });
-    if (!res || res.error) {
-      throw new ControlError('chrome-ai', (res && res.error) || "Chrome's built-in AI didn't respond.");
-    }
-    text = res.text;
+async function classifyLocal(posts, settings) {
+  await ensureOffscreen();
+  const res = await chrome.runtime.sendMessage({
+    target: 'offscreen',
+    type: 'control:local-classify',
+    payload: { instructions: settings.aiFilter.instructions, posts },
+  });
+  if (!res || res.error) {
+    throw new ControlError('local', (res && res.error) || "The on-device model didn't respond.");
   }
-  return P.parseVerdicts(
-    text,
-    posts.map((p) => p.key),
-  );
+  const verdicts = new Map(res.verdicts.map((v) => [v.key, { decision: v.decision, reason: v.reason }]));
+  const unsure = posts.filter((p) => res.verdicts.find((v) => v.key === p.key && v.uncertain));
+  if (settings.aiFilter.claudeCheck && unsure.length) {
+    // Best effort: if Claude fails, keep the on-device verdicts.
+    try {
+      const second = await classifyWithAnthropic(unsure, settings);
+      for (const [key, v] of second) verdicts.set(key, v);
+    } catch (err) {
+      console.warn('[control.] Claude double-check failed:', err.code || '', err.message);
+    }
+  }
+  return verdicts;
 }
 
 function classify(posts, settings) {
   const run =
-    settings.aiFilter.provider === 'chrome-ai'
-      ? classifyWithChromeAI(posts, settings)
-      : classifyWithAnthropic(posts, settings);
+    settings.aiFilter.provider === 'anthropic'
+      ? classifyWithAnthropic(posts, settings)
+      : classifyLocal(posts, settings);
   // Shorter than the content script's own 30s limit, so the popup gets a
   // real explanation instead of a silent timeout.
   let timer;

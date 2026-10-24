@@ -64,10 +64,34 @@
       radio.checked = radio.value === settings.aiFilter.provider;
     }
     const isAnthropic = settings.aiFilter.provider === 'anthropic';
-    $('anthropic-fields').hidden = !isAnthropic;
-    $('chrome-ai-fields').hidden = isAnthropic;
+    $('local-fields').hidden = isAnthropic;
+    $('anthropic-fields').hidden = !S.usesClaude(settings.aiFilter);
     $('model').value = settings.aiFilter.model;
-    if (!isAnthropic) refreshChromeAI();
+    renderUnderstood();
+  }
+
+  // Shows what the on-device filter will actually look for, so people can
+  // rephrase if the parser misread them.
+  function renderUnderstood() {
+    const list = $('understood-list');
+    list.textContent = '';
+    const text = settings.aiFilter.instructions.trim();
+    const show = text && settings.aiFilter.provider === 'local';
+    $('understood').hidden = !show;
+    if (!show) return;
+    const intent = globalThis.control.intent.parseInstructions(text);
+    const add = (prefix, items) => {
+      if (!items.length) return;
+      const li = document.createElement('li');
+      const b = document.createElement('strong');
+      b.textContent = prefix;
+      li.append(b, ' ' + items.join(' · '));
+      list.append(li);
+    };
+    add('Only show:', intent.only ? intent.show.map((t) => t.label) : []);
+    add('Hide:', intent.hide.map((t) => t.label));
+    add('Noted, never hidden for this:', intent.more);
+    if (!list.children.length) add('Nothing to filter yet.', ['Try “Hide crypto posts” or “Only show AI research”.']);
   }
 
   function renderKeywordsText() {
@@ -168,6 +192,9 @@
     if (settings.aiFilter.provider === 'anthropic' && !secrets.anthropicApiKey) {
       return 'Add your Anthropic API key below to turn this on.';
     }
+    if (settings.aiFilter.provider === 'local' && settings.aiFilter.claudeCheck && !secrets.anthropicApiKey) {
+      return 'Add your Anthropic API key below for the Claude double-check.';
+    }
     return '';
   }
 
@@ -203,33 +230,6 @@
     const input = $('api-key');
     input.type = input.type === 'password' ? 'text' : 'password';
     $('toggle-key').textContent = input.type === 'password' ? 'Show' : 'Hide';
-  });
-
-  async function refreshChromeAI() {
-    const status = await globalThis.control.chromeAI.availability();
-    const text = {
-      unsupported:
-        "This browser doesn't have Chrome's built-in AI. It needs desktop Chrome 138+ on a machine that meets Google's hardware requirements. Use Claude instead.",
-      unavailable: "Chrome's built-in AI isn't available on this device. Use Claude instead.",
-      downloadable: 'The on-device model needs a one-time download (a few GB).',
-      downloading: 'The on-device model is downloading…',
-      available: 'Ready. Posts are checked on your device; nothing is sent anywhere.',
-    }[status];
-    $('chrome-ai-status').textContent = text || status;
-    $('chrome-ai-download').hidden = status !== 'downloadable';
-  }
-  $('chrome-ai-download').addEventListener('click', async () => {
-    const btn = $('chrome-ai-download');
-    btn.disabled = true;
-    try {
-      await globalThis.control.chromeAI.ensureReady((loaded) => {
-        $('chrome-ai-status').textContent = `Downloading… ${Math.round(loaded * 100)}%`;
-      });
-    } catch (err) {
-      $('chrome-ai-status').textContent = 'Download failed: ' + (err.message || err);
-    }
-    btn.disabled = false;
-    refreshChromeAI();
   });
 
   // ---------- test ----------

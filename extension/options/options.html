@@ -72,8 +72,8 @@
             <input type="checkbox" class="switch" data-path="aiFilter.enabled" aria-label="AI filter on" />
           </div>
           <p class="muted">
-            Tell control. in your own words. An AI model reads each post on your home feed and hides the ones that don’t
-            fit.
+            Tell control. in your own words. A small AI model on your own computer reads each post on your home feed and
+            hides the ones that don’t fit.
           </p>
           <textarea
             id="instructions"
@@ -85,18 +85,34 @@
             <span class="save-state" id="instructions-state" aria-live="polite"></span>
           </div>
 
+          <div id="understood" class="understood" hidden>
+            <h3>How control. understood you</h3>
+            <ul id="understood-list"></ul>
+          </div>
+
           <h3>AI model</h3>
           <div class="choices" role="radiogroup">
             <label class="choice">
-              <input type="radio" name="provider" value="anthropic" />
-              <span><strong>Claude</strong> <span class="muted">· uses your Anthropic API key</span></span>
+              <input type="radio" name="provider" value="local" />
+              <span
+                ><strong>On-device</strong>
+                <span class="muted">· free, private, nothing leaves your browser</span></span
+              >
             </label>
             <label class="choice">
-              <input type="radio" name="provider" value="chrome-ai" />
-              <span
-                ><strong>Chrome built-in AI</strong>
-                <span class="muted">· free, on-device, Chrome desktop only</span></span
+              <input type="radio" name="provider" value="anthropic" />
+              <span><strong>Claude</strong> <span class="muted">· every post, uses your Anthropic API key</span></span>
+            </label>
+          </div>
+
+          <div id="local-fields">
+            <label class="row">
+              <span class="label"
+                >Double-check uncertain posts with Claude<span class="hint"
+                  >Only the posts the on-device model isn’t sure about (about 1 in 5). Needs an API key.</span
+                ></span
               >
+              <input type="checkbox" class="switch" data-path="aiFilter.claudeCheck" />
             </label>
           </div>
 
@@ -118,11 +134,6 @@
               <span>Model</span>
               <select id="model"></select>
             </label>
-          </div>
-
-          <div id="chrome-ai-fields" hidden>
-            <p id="chrome-ai-status" class="muted"></p>
-            <button class="btn" id="chrome-ai-download" hidden>Download the on-device model</button>
           </div>
 
           <label class="row">
@@ -186,7 +197,7 @@
     </main>
 
     <script src="../shared/settings.js"></script>
-    <script src="../shared/chrome-ai.js"></script>
+    <script src="../shared/intent.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

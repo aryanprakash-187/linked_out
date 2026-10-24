@@ -53,8 +53,10 @@ for (const fixture of FIXTURES) {
         assert.equal(await save.isDisabled(), false);
         assert.equal(await options.innerText('#instructions-state'), 'Unsaved changes');
         await save.click();
-        await options.waitForSelector('#instructions-state:has-text("API key")');
+        await options.waitForSelector('#instructions-state:has-text("Saved")');
         assert.equal(await options.isChecked('#ai input[data-path="aiFilter.enabled"]'), true);
+        // The on-device filter shows how it parsed the instructions.
+        assert.equal(await options.innerText('#understood-list'), 'Only show: bioinformatics');
         assert.equal(await save.isDisabled(), true);
         // Ctrl+Enter saves too.
         await options.fill('#instructions', 'Only bioinformatics and genomics.');
@@ -68,6 +70,7 @@ for (const fixture of FIXTURES) {
         await withBrowser(fixture, async ({ context, extensionId }) => {
           const options = await openOptions(context, extensionId, '#ai');
           await options.fill('#instructions', 'Hide webinars.');
+          await options.check('input[name="provider"][value="anthropic"]');
           await options.fill('#api-key', 'sk-ant-test');
           await options.locator('#api-key').blur();
           // Point the client at the mock (normally empty = api.anthropic.com).
@@ -89,9 +92,25 @@ for (const fixture of FIXTURES) {
       }
     });
 
+    test('"Try it on sample posts" works on-device with no API key', () =>
+      withBrowser(fixture, async ({ context, extensionId }) => {
+        const options = await openOptions(context, extensionId, '#ai');
+        await options.fill('#instructions', 'Hide webinars and engagement bait.');
+        await options.click('#test-ai');
+        await options.waitForSelector('.verdict', { timeout: 30000 });
+        const tags = await options.locator('.verdict .tag').allInnerTexts();
+        // The 4th sample (a rejection story ending in "Agree?") is too subtle
+        // for the small model; the default keyword list catches "agree?".
+        assert.deepEqual(
+          tags.map((t) => t.toLowerCase()),
+          ['show', 'show', 'hide', 'show'],
+        );
+      }));
+
     test('"Try it" with no API key explains what is missing instead of failing', () =>
       withBrowser(fixture, async ({ context, extensionId }) => {
         const options = await openOptions(context, extensionId);
+        await options.check('input[name="provider"][value="anthropic"]');
         await options.fill('#instructions', 'Hide webinars.');
         await options.click('#test-ai');
         await options.waitForSelector('#test-output .error');
@@ -143,6 +162,7 @@ for (const fixture of FIXTURES) {
             const S = globalThis.control.settings;
             const s = await S.load();
             s.aiFilter.enabled = true;
+            s.aiFilter.provider = 'anthropic';
             s.aiFilter.instructions = 'Hide crypto.';
             await S.save(s);
           });

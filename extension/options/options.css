@@ -144,8 +144,21 @@ code {
   gap: 8px;
 }
 
-#chrome-ai-fields {
+#local-fields .row {
+  margin-top: 4px;
+}
+
+.understood {
   margin-top: 12px;
+}
+
+.understood ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.understood li {
+  margin: 2px 0;
 }
 
 #ai > .row {

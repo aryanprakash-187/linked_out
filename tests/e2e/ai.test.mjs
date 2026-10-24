@@ -1,6 +1,6 @@
-// Feature 3 (the AI filter) end to end, with a local mock of the Anthropic
-// API standing in for the real one. The extension's real code path runs:
-// content script -> background batching -> official Anthropic SDK -> HTTP.
+// Feature 3 (the AI filter) end to end. Claude tests use a local mock of the
+// Anthropic API: content script -> background batching -> official SDK -> HTTP.
+// On-device tests run the real bundled model in the offscreen page.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, openFeed, postStates, barText, setSettings, setSecrets, startMockAnthropic } from './harness.mjs';
@@ -14,7 +14,7 @@ async function withAi(fixture, opts, fn) {
   try {
     await setSecrets(b.worker, { anthropicApiKey: opts.key ?? 'sk-ant-test', anthropicBaseUrl: mock.url });
     await setSettings(b.worker, {
-      aiFilter: { enabled: true, instructions: INSTRUCTIONS, ...(opts.aiFilter || {}) },
+      aiFilter: { enabled: true, instructions: INSTRUCTIONS, provider: 'anthropic', ...(opts.aiFilter || {}) },
     });
     await fn({ ...b, mock });
   } finally {
@@ -30,7 +30,7 @@ async function waitForNoPending(page, timeout = 10000) {
 for (const fixture of FIXTURES) {
   describe(fixture, () => {
     test('AI filter blurs posts while checking, then hides what the model rejects', () =>
-      withAi(fixture, { mock: { delayMs: 800 } }, async ({ context, mock }) => {
+      withAi(fixture, { mock: { delayMs: 800 }, aiFilter: { model: 'claude-opus-5-5' } }, async ({ context, mock }) => {
         const page = await openFeed(context);
         // Rules handle 1002/1003/1004/1006 instantly; the rest wait for the AI.
         let s = await postStates(page);
@@ -120,37 +120,32 @@ for (const fixture of FIXTURES) {
         assert.equal(mock.requests.length, 0);
       }));
 
-    test('Chrome built-in AI provider: posts are judged on-device, nothing sent to Anthropic', () =>
-      withAi(fixture, { aiFilter: { provider: 'chrome-ai' } }, async ({ context, worker, mock }) => {
-        // Headless Chromium has no Gemini Nano, so stand in for the Prompt API
-        // inside the service worker (where background.js looks first).
-        await worker.evaluate(() => {
-          globalThis.__lmCalls = [];
-          const session = {
-            clone: async () => session,
-            destroy() {},
-            async prompt(user, options) {
-              globalThis.__lmCalls.push({ user, hasSchema: Boolean(options && options.responseConstraint) });
-              const posts = JSON.parse(user.slice(user.indexOf('[')));
-              const verdicts = posts.map((p) =>
-                /crypto/i.test(p.text)
-                  ? { id: p.id, decision: 'hide', reason: 'On-device: crypto' }
-                  : { id: p.id, decision: 'show', reason: 'ok' },
-              );
-              return JSON.stringify({ verdicts });
-            },
-          };
-          globalThis.LanguageModel = { availability: async () => 'available', create: async () => session };
-        });
+    test('on-device provider: the bundled model hides matching posts, nothing sent to Anthropic', () =>
+      withAi(fixture, { aiFilter: { provider: 'local' } }, async ({ context, mock }) => {
         const page = await openFeed(context);
-        await waitForNoPending(page);
-        assert.equal((await postStates(page))['1007'], 'hidden');
-        assert.equal(await barText(page, '1007'), 'control. hid a post · On-device: crypto');
-        const calls = await worker.evaluate(() => globalThis.__lmCalls);
-        assert.equal(calls.length, 1);
-        assert.equal(calls[0].hasSchema, true);
+        await waitForNoPending(page, 30000); // first run loads the model
+        const s = await postStates(page);
+        assert.equal(s['1007'], 'hidden'); // crypto webinar
+        assert.match(await barText(page, '1007'), /^control\. hid a post · Looks like crypto promotion/);
+        for (const id of ['1001', '1005', '1008']) assert.equal(s[id], 'shown', id); // science posts
         assert.equal(mock.requests.length, 0);
       }));
+
+    test('on-device "only" filter hides posts that are off-topic', () =>
+      withAi(
+        fixture,
+        { aiFilter: { provider: 'local', instructions: 'Only show posts about genomics and bioinformatics.' } },
+        async ({ context }) => {
+          const page = await openFeed(context);
+          await waitForNoPending(page, 30000);
+          const s = await postStates(page);
+          assert.equal(s['1007'], 'hidden');
+          assert.match(await barText(page, '1007'), /Not about genomics and bioinformatics/);
+          // 1008 (variant-calling runtime) is a known borderline miss for the
+          // small model in a 4-post feed; accuracy is measured by the eval, not here.
+          for (const id of ['1001', '1005']) assert.equal(s[id], 'shown', id);
+        },
+      ));
 
     test('Haiku is called without the fallback beta', () =>
       withAi(fixture, { aiFilter: { model: 'claude-haiku-5-5' } }, async ({ context, mock }) => {

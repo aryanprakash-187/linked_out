@@ -26,12 +26,14 @@
       enabled: true,
       list: PLACEHOLDER_KEYWORDS.slice(),
     },
-    // Feature 3: natural-language filter judged by an LLM.
+    // Feature 3: natural-language filter. 'local' runs a small sentence
+    // encoder on-device (free, private); 'anthropic' sends posts to Claude.
     aiFilter: {
       enabled: false,
       instructions: '',
-      provider: 'anthropic', // 'anthropic' | 'chrome-ai'
-      model: 'claude-opus-5-5',
+      provider: 'local', // 'local' | 'anthropic'
+      claudeCheck: false, // local only: double-check uncertain posts with Claude
+      model: 'claude-haiku-5-5',
       holdWhileChecking: true,
     },
     // Feature 4: Unhook-style layout controls for the home page.
@@ -42,6 +44,8 @@
     },
     debug: false,
   };
+
+  const PROVIDERS = ['local', 'anthropic'];
 
   const SETTINGS_KEY = 'controlSettings';
   // API keys live in storage.local only, never in storage.sync.
@@ -68,6 +72,15 @@
     return out;
   }
 
+  // merge() plus value checks that a plain type-merge can't do. Settings saved
+  // by older versions (e.g. provider 'chrome-ai') fall back to the default.
+  function fromStored(stored) {
+    const s = merge(DEFAULTS, stored);
+    if (!PROVIDERS.includes(s.aiFilter.provider)) s.aiFilter.provider = DEFAULTS.aiFilter.provider;
+    if (!MODELS.some((m) => m.id === s.aiFilter.model)) s.aiFilter.model = DEFAULTS.aiFilter.model;
+    return s;
+  }
+
   function syncArea() {
     // Safari and some Chromium forks may not expose storage.sync.
     return (root.chrome && chrome.storage && (chrome.storage.sync || chrome.storage.local)) || null;
@@ -77,18 +90,18 @@
     const area = syncArea();
     if (!area) return structuredClone(DEFAULTS);
     const got = await area.get(SETTINGS_KEY);
-    return merge(DEFAULTS, got[SETTINGS_KEY]);
+    return fromStored(got[SETTINGS_KEY]);
   }
 
   async function save(settings) {
-    const clean = merge(DEFAULTS, settings);
+    const clean = fromStored(settings);
     await syncArea().set({ [SETTINGS_KEY]: clean });
     return clean;
   }
 
   function onChange(callback) {
     chrome.storage.onChanged.addListener((changes) => {
-      if (changes[SETTINGS_KEY]) callback(merge(DEFAULTS, changes[SETTINGS_KEY].newValue));
+      if (changes[SETTINGS_KEY]) callback(fromStored(changes[SETTINGS_KEY].newValue));
     });
   }
 
@@ -112,9 +125,15 @@
   }
 
   // Identifies one configuration of the AI filter. A cached verdict is only
-  // reused while the instructions, provider and model are unchanged.
+  // reused while everything that can change it is unchanged. The Claude model
+  // only matters when Claude is actually asked.
+  function usesClaude(aiFilter) {
+    return aiFilter.provider === 'anthropic' || Boolean(aiFilter.claudeCheck);
+  }
+
   function aiConfigKey(aiFilter) {
-    return hash([aiFilter.provider, aiFilter.model, aiFilter.instructions.trim()].join('\u0000'));
+    const model = usesClaude(aiFilter) ? aiFilter.model : '';
+    return hash([aiFilter.provider, model, aiFilter.claudeCheck ? 1 : 0, aiFilter.instructions.trim()].join('\u0000'));
   }
 
   function isAiActive(settings) {
@@ -124,11 +143,13 @@
   control.settings = {
     DEFAULTS,
     MODELS,
+    PROVIDERS,
     PLACEHOLDER_KEYWORDS,
     SETTINGS_KEY,
     SECRETS_KEY,
     STATUS_KEY,
     merge,
+    fromStored,
     load,
     save,
     onChange,
@@ -136,6 +157,7 @@
     saveSecrets,
     hash,
     aiConfigKey,
+    usesClaude,
     isAiActive,
   };
 })(globalThis);

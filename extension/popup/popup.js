@@ -29,7 +29,7 @@
     $('kw-hint').textContent = n === 1 ? '1 keyword' : `${n} keywords`;
     const missing = aiReady();
     $('ai-hint').textContent =
-      missing || (settings.aiFilter.provider === 'chrome-ai' ? 'Chrome built-in AI' : 'Claude');
+      missing || (settings.aiFilter.provider === 'anthropic' ? 'Claude' : 'On-device AI');
   }
 
   async function save() {

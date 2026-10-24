@@ -26,14 +26,26 @@ test('merge of nothing equals defaults but never shares references', () => {
   assert.notDeepEqual(merged.keywords.list, S.DEFAULTS.keywords.list);
 });
 
-test('aiConfigKey changes with instructions, model and provider only', () => {
+test('aiConfigKey changes with instructions, provider, Claude check and (when Claude is used) model', () => {
   const a = { ...S.DEFAULTS.aiFilter, instructions: 'only bioinformatics' };
   const base = S.aiConfigKey(a);
+  assert.equal(a.provider, 'local');
   assert.equal(S.aiConfigKey({ ...a, instructions: '  only bioinformatics \n' }), base);
   assert.equal(S.aiConfigKey({ ...a, holdWhileChecking: false }), base);
+  // On-device only: the Claude model is irrelevant.
+  assert.equal(S.aiConfigKey({ ...a, model: 'claude-opus-5-5' }), base);
   assert.notEqual(S.aiConfigKey({ ...a, instructions: 'no internships' }), base);
-  assert.notEqual(S.aiConfigKey({ ...a, model: 'claude-haiku-5-5' }), base);
-  assert.notEqual(S.aiConfigKey({ ...a, provider: 'chrome-ai' }), base);
+  assert.notEqual(S.aiConfigKey({ ...a, provider: 'anthropic' }), base);
+  const checked = { ...a, claudeCheck: true };
+  assert.notEqual(S.aiConfigKey(checked), base);
+  assert.notEqual(S.aiConfigKey({ ...checked, model: 'claude-opus-5-5' }), S.aiConfigKey(checked));
+});
+
+test('settings from older versions fall back to valid values', () => {
+  const s = S.fromStored({ aiFilter: { provider: 'chrome-ai', model: 'claude-old-1', instructions: 'x' } });
+  assert.equal(s.aiFilter.provider, 'local');
+  assert.equal(s.aiFilter.model, S.DEFAULTS.aiFilter.model);
+  assert.equal(s.aiFilter.instructions, 'x');
 });
 
 test('isAiActive needs the master switch, the toggle and instructions', () => {

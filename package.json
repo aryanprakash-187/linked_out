@@ -8,10 +8,14 @@
     "test": "node --test \"tests/unit/*.test.js\"",
     "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
     "lint": "node scripts/check-manifest.mjs",
-    "zip": "node scripts/zip.mjs"
+    "zip": "node scripts/zip.mjs",
+    "models": "node scripts/fetch-models.mjs",
+    "setup": "npm run vendor && npm run models",
+    "eval": "node eval/run.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@huggingface/transformers": "^4.3.1",
     "esbuild": "^0.28.2",
     "playwright": "^1.56.1"
   }
