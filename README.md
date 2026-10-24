@@ -144,7 +144,7 @@ step is labelling a few hundred real feed posts.
   Claude double-check cover some of it.
 - **English only** today. Swap in `multilingual-e5-small` (prefixes `query: ` / `passage: `) for global reach, and
   recalibrate `local-filter.js` CONFIG with `npm run eval`.
-- **Learn from clicks:** "Show anyway" should nudge that topic's threshold for this user (not built yet).
+- **Personal learning:** explicit corrections are remembered locally (see below). Show anyway remains a temporary reveal.
 - ONNX Runtime runs single-threaded (extension pages aren't cross-origin isolated). That's fine for a 33M model.
 - `npm run lint` / `npm run zip` point at scripts that don't exist yet.
 
@@ -155,3 +155,28 @@ step is labelling a few hundred real feed posts.
 - Everything that can fail **fails open** (the post is shown). An AI problem must never hide content.
 - Post text is untrusted data. The Claude prompt says to ignore instructions inside posts.
 - After changing the model or thresholds, run `npm run eval` and update `CONFIG` in `shared/local-filter.js`.
+
+## Personal feedback memory
+
+With the on-device filter enabled, AI-hidden posts offer **This should be shown** and visible posts offer
+**Hide more like this**. These are explicit teaching actions. **Show anyway** reveals one post without teaching.
+
+Corrections are stored only in the extension's IndexedDB, scoped to the saved instructions and encoder version.
+An exact corrected text uses the user's decision immediately. For unseen posts, the existing gte-small embedding
+is compared with up to 1,000 saved corrections. At least three neighbors with cosine similarity >= 0.90 must
+agree; a nearby opposing correction blocks the override unless the similarity margin is >= 0.05.
+Otherwise the original topic filter and optional Claude check remain in charge. Explicit keyword and structural
+rules still win. The thresholds are conservative starting values, not calibrated accuracy guarantees.
+
+No additional model or server is required. 1,000 384-dimensional embeddings contain about 1.5 MB of Float32
+values (plus text, metadata, and one undo record); in-memory JavaScript arrays can use more. Feedback text is
+capped at 20,000 characters per record; encoder input remains 2,000 characters. Older corrections are evicted
+at the global cap. Storage is not encrypted and embeddings are also potentially sensitive data.
+
+Use **Undo correction** immediately after saving, or **Reset learning for these instructions** in settings.
+Undo covers the latest correction across tabs and refuses to undo a different, newer correction.
+Reset does not change other instruction profiles. Uninstalling the extension removes its local learning data.
+
+Each feedback change publishes a revision, clears verdict caches across tabs, and rejects older in-flight
+answers. Corrections survive extension restarts. This is example-based personalization; encoder weights do
+not change. Real-feed evaluation is still needed to measure generalization and added latency.

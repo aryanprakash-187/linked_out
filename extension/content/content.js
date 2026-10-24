@@ -15,6 +15,7 @@
     settings: null,
     compiledKeywords: [],
     aiKey: '',
+    posts: new WeakMap(),
     generation: 0, // bumped on every settings change so posts are re-judged
     path: location.pathname,
     aiVerdicts: new Map(), // `${aiKey}:${urn}` -> { decision, reason }
@@ -75,6 +76,64 @@
     return first && first.classList.contains('control-bar') ? first : null;
   }
 
+  async function sendFeedback(el, action, decision, expectedRevision) {
+    const post = state.posts.get(el);
+    if (!post) return;
+    const payload = { action, decision, expectedRevision, text: post.text, instructions: state.settings.aiFilter.instructions };
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'control:feedback', payload });
+      if (!res || res.error) throw new Error(res && res.error || 'Feedback could not be saved');
+      showFeedbackStatus(el, action === 'reset' ? 'Personal learning reset.' : action === 'undo' ? 'Correction undone.' : 'Preference saved on this device.', action === 'correct', res.revision);
+    } catch (err) {
+      showFeedbackStatus(el, err.message || 'Feedback failed. Try again.', false);
+    }
+  }
+
+  function showFeedbackStatus(el, text, undo, revision) {
+    el.querySelector('.control-feedback-status')?.remove();
+    const status = document.createElement('div');
+    status.className = 'control-feedback-status';
+    status.setAttribute('role', 'status');
+    status.textContent = text + ' ';
+    if (undo) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Undo correction';
+      button.onclick = (event) => { event.preventDefault(); event.stopPropagation(); sendFeedback(el, 'undo', undefined, revision); };
+      status.append(button);
+    }
+    (placeholderOf(el) || el).append(status);
+  }
+
+  function addFeedbackControls(el, parent, decision) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = decision === 'show' ? 'This should be shown' : 'Hide more like this';
+    button.title = 'Teach your local filter. Saved only on this device.';
+    button.onclick = (event) => {
+      event.preventDefault(); event.stopPropagation();
+      sendFeedback(el, 'correct', decision);
+    };
+    parent.append(button);
+  }
+
+  function personalActive() {
+    return state.settings.aiFilter.provider === 'local' && S.isAiActive(state.settings);
+  }
+
+  function syncFeedbackControls(el, post) {
+    el.querySelector('.control-feedback-actions')?.remove();
+    if (!post || !personalActive() || rules.evaluateRules(post, state.settings, state.compiledKeywords)) return;
+    const status = el.getAttribute('data-control');
+    if (!['shown', 'revealed', 'hidden'].includes(status)) return;
+    const parent = status === 'hidden' ? placeholderOf(el) : el;
+    if (!parent) return;
+    const actions = document.createElement('span');
+    actions.className = 'control-feedback-actions';
+    addFeedbackControls(el, actions, status === 'hidden' ? 'show' : 'hide');
+    parent.append(actions);
+  }
+
   function setBar(el, kind, text) {
     let bar = placeholderOf(el);
     if (!bar) {
@@ -92,6 +151,7 @@
         el.setAttribute('data-control-override', '1');
         el.setAttribute('data-control', 'revealed');
         bar.remove();
+        syncFeedbackControls(el, state.posts.get(el));
       });
       bar.append(label, button);
       el.prepend(bar);
@@ -126,6 +186,8 @@
     el.removeAttribute('data-control-sig');
     el.removeAttribute('data-control-urn');
     el.removeAttribute('data-control-reason');
+    el.querySelector('.control-feedback-actions')?.remove();
+    el.querySelector('.control-feedback-status')?.remove();
     const bar = placeholderOf(el);
     if (bar) bar.remove();
   }
@@ -142,7 +204,7 @@
     }
     if (!S.isAiActive(s)) return markShown(el);
 
-    const cacheKey = state.aiKey + ':' + post.urn;
+    const cacheKey = state.aiKey + ':' + post.urn + ':' + S.hash(post.text || '');
     const cached = state.aiVerdicts.get(cacheKey);
     if (cached) {
       if (cached.decision === 'hide') {
@@ -157,6 +219,7 @@
   }
 
   function requestVerdict(post, cacheKey) {
+    const generation = state.generation;
     if (state.aiInflight.has(cacheKey)) return;
     const message = {
       type: 'control:classify',
@@ -175,6 +238,7 @@
       request = Promise.resolve(failed(err));
     }
     const p = Promise.race([request, timeout]).then((res) => {
+      if (generation !== state.generation) return;
       state.aiInflight.delete(cacheKey);
       res = res || { decision: 'show', error: 'no response' };
       if (!cacheKey.startsWith(state.aiKey + ':')) return; // settings changed meanwhile
@@ -215,6 +279,7 @@
       const status = el.getAttribute('data-control');
       if (status === 'hidden' && !placeholderOf(el)) markHidden(el, el.getAttribute('data-control-reason') || 'Hidden');
       if (status === 'pending' && !placeholderOf(el)) markPending(el);
+      if (!el.querySelector('.control-feedback-actions')) syncFeedbackControls(el, state.posts.get(el));
       return;
     }
 
@@ -226,9 +291,11 @@
 
     const post = linkedin.extractPost(el);
     if (!post.ready) return; // not rendered yet; the observer will call again
+    state.posts.set(el, post);
     el.setAttribute('data-control-sig', sig);
     el.setAttribute('data-control-urn', post.urn);
     decide(el, post);
+    syncFeedbackControls(el, post);
   }
 
   // ---------- scanning ----------
@@ -263,6 +330,8 @@
   function applySettings(settings) {
     state.settings = settings;
     state.generation++;
+    state.aiVerdicts.clear();
+    state.aiInflight.clear();
     state.compiledKeywords = rules.compileKeywords(settings.keywords.list);
     state.aiKey = S.aiConfigKey(settings.aiFilter);
     state.lastAiError = null;
@@ -298,6 +367,6 @@
   S.onChange(applySettings);
   // A newly added API key should take effect without reloading LinkedIn.
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes[S.SECRETS_KEY] && state.settings) applySettings(state.settings);
+    if ((changes[S.SECRETS_KEY] || changes.controlFeedbackRevision) && state.settings) applySettings(state.settings);
   });
 })();

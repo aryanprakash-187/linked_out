@@ -18,6 +18,10 @@ const MAX_CONCURRENT = 2;
 const AI_TIMEOUT_MS = 25000;
 const CACHE_KEY = 'controlVerdicts';
 const CACHE_MAX = 3000;
+const FEEDBACK_REVISION_KEY = 'controlFeedbackRevision';
+async function feedbackRevision() {
+  return (await chrome.storage.local.get(FEEDBACK_REVISION_KEY))[FEEDBACK_REVISION_KEY] || 0;
+}
 
 // Server-side refusal fallbacks are available for these models.
 const FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5']);
@@ -212,6 +216,12 @@ async function runBatch(batch) {
   const posts = batch.map((b, i) => ({ key: 'p' + (i + 1), author: b.item.author, text: b.item.text }));
   try {
     const verdicts = await classify(posts, settings);
+    // Feedback may have arrived while the model was running. Never cache an old verdict.
+    const currentKey = S.aiConfigKey(settings.aiFilter) + ':' + await feedbackRevision();
+    if (batch[0].key !== currentKey) {
+      for (const b of batch) b.resolve({ decision: 'show', error: 'Preferences changed; retrying' });
+      return;
+    }
     const c = await getCache();
     const now = Date.now();
     batch.forEach((b, i) => {
@@ -233,11 +243,12 @@ async function runBatch(batch) {
 async function handleClassify(item) {
   const settings = await S.load();
   if (!S.isAiActive(settings)) return { decision: 'show', error: 'AI filter is off' };
-  const key = S.aiConfigKey(settings.aiFilter);
-  const hit = (await getCache()).get(key + ':' + item.id);
+  const key = S.aiConfigKey(settings.aiFilter) + ':' + await feedbackRevision();
+  const itemKey = item.id + ':' + S.hash(item.text || '');
+  const hit = (await getCache()).get(key + ':' + itemKey);
   if (hit) return { key, decision: hit.d, reason: hit.r };
   return new Promise((resolve) => {
-    queue.push({ item, key, settings, resolve });
+    queue.push({ item: { ...item, id: itemKey }, key, settings, resolve });
     scheduleFlush();
   });
 }
@@ -265,7 +276,31 @@ async function handleTest(samples) {
   }
 }
 
+// Serialize feedback, including revision publication, across all feed tabs.
+let feedbackQueue = Promise.resolve();
+async function handleFeedback(payload) {
+  const settings = await S.load();
+  if (payload.action === 'correct' && (settings.aiFilter.provider !== 'local' || !S.isAiActive(settings))) throw new Error('Enable the on-device filter to personalize it');
+  if (payload.instructions !== settings.aiFilter.instructions) throw new Error('Instructions changed; try again');
+  await ensureOffscreen();
+  const res = await chrome.runtime.sendMessage({
+    target: 'offscreen', type: 'control:local-feedback',
+    payload: { ...payload, instructions: settings.aiFilter.instructions },
+  });
+  if (!res || res.error) throw new Error(res && res.error || 'Feedback could not be saved');
+  cache = new Map();
+  await chrome.storage.local.remove(CACHE_KEY);
+  await chrome.storage.local.set({ [FEEDBACK_REVISION_KEY]: res.revision });
+  return { ok: true, ...res };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === 'control:feedback') {
+    const result = feedbackQueue.then(() => handleFeedback(msg.payload));
+    feedbackQueue = result.catch(() => {});
+    result.then(sendResponse).catch((err) => sendResponse({ error: err.message }));
+    return true;
+  }
   if (!msg || msg.target === 'offscreen') return;
   if (msg.type === 'control:classify') {
     handleClassify(msg.item).then(sendResponse);

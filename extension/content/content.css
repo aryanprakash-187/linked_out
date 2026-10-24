@@ -138,3 +138,27 @@ html.control-debug [data-control='pending'] {
 html.control-debug [data-control='revealed'] {
   outline: 2px dotted #1565c0;
 }
+
+/* Explicit feedback is separate from the temporary Show anyway override. */
+.control-bar { flex-wrap: wrap; }
+.control-feedback-actions, .control-feedback-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font: 12px/1.4 system-ui, sans-serif;
+  color: var(--color-text-low-emphasis, #555);
+}
+.control-feedback-actions button, .control-feedback-status button {
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 3px 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.control-feedback-actions button:focus-visible, .control-feedback-status button:focus-visible {
+  outline: 2px solid #0a66c2;
+  outline-offset: 2px;
+}
