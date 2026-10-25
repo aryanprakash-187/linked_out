@@ -1,22 +1,12 @@
 {
-  "name": "control",
+  "name": "linkedout-control-x",
   "version": "0.1.0",
   "private": true,
-  "description": "control. — decide what gets your attention on LinkedIn.",
+  "description": "LinkedOut and Control-X browser extensions",
   "scripts": {
-    "vendor": "node scripts/build-vendor.mjs",
-    "test": "node --test \"tests/unit/*.test.js\"",
-    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
-    "lint": "node scripts/check-manifest.mjs",
-    "zip": "node scripts/zip.mjs",
-    "models": "node scripts/fetch-models.mjs",
-    "setup": "npm run vendor && npm run models",
-    "eval": "node eval/run.mjs"
-  },
-  "devDependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
-    "@huggingface/transformers": "^4.3.1",
-    "esbuild": "^0.28.2",
-    "playwright": "^1.56.1"
+    "test": "npm run test:linkedout && npm run test:control-x",
+    "test:linkedout": "npm --prefix linkedout test",
+    "test:control-x": "npm --prefix control-x test",
+    "test:x-browser": "npm --prefix control-x run test:e2e"
   }
 }

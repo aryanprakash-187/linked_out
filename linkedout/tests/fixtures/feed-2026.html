@@ -1,0 +1,113 @@
+<!doctype html>
+<!--
+  A stand-in for LinkedIn's 2026 feed markup: class names are build hashes
+  that change every deploy, posts are [data-testid="mainFeed"]
+  [role="listitem"][componentkey], the "commented" header drops "on this",
+  "Promoted" is a bare <div>, and there are no stable ids or classes on the
+  top bar or sidebars. Based on public reports from extension authors
+  tracking LinkedIn's markup in September 2026.
+
+  data-fixture-* attributes are for the tests only; the extension never
+  reads them.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Feed | LinkedIn</title>
+    <style>
+      body { margin: 0; background: #f4f2ee; font: 14px/1.4 -apple-system, system-ui, sans-serif; color: rgba(0,0,0,.9); }
+      ._v1 { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      ._h9a { position: sticky; top: 0; height: 52px; background: #fff; border-bottom: 1px solid #e8e8e8; z-index: 10; }
+      ._h9b { max-width: 1128px; margin: 0 auto; height: 100%; display: flex; align-items: center; gap: 28px; padding: 0 16px; }
+      ._lg { width: 34px; height: 34px; border-radius: 4px; background: #0a66c2; color: #fff; display: grid; place-items: center; font-weight: 700; }
+      ._sr { flex: 1; max-width: 280px; padding: 7px 12px; border-radius: 4px; background: #edf3f8; color: #666; }
+      ._nv { display: flex; gap: 24px; margin-left: auto; }
+      ._nv a { color: rgba(0,0,0,.6); text-decoration: none; font-size: 12px; }
+      ._gr { max-width: 1128px; margin: 24px auto 0; display: grid; grid-template-columns: 225px minmax(0, 555px) 300px; gap: 24px; padding: 0 16px; align-items: start; }
+      ._cd { background: #fff; border-radius: 8px; box-shadow: 0 0 0 1px rgba(0,0,0,.08); padding: 16px; }
+      ._pc { background: #fff; border-radius: 8px; box-shadow: 0 0 0 1px rgba(0,0,0,.08); margin-bottom: 8px; padding: 12px 16px 4px; }
+      ._hd { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #ebebeb; color: rgba(0,0,0,.6); font-size: 12px; }
+      ._ac { display: grid; grid-template-columns: 48px 1fr; column-gap: 8px; margin-bottom: 8px; }
+      ._av { grid-row: span 3; width: 48px; height: 48px; border-radius: 50%; background: #c9d6e2; }
+      ._nm { font-weight: 600; }
+      ._sb { font-size: 12px; color: rgba(0,0,0,.6); }
+      ._tx { margin: 4px 0 12px; }
+      ._bt { display: flex; justify-content: space-around; border-top: 1px solid #ebebeb; padding: 6px 0; color: rgba(0,0,0,.6); font-weight: 600; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <header class="_h9a" data-fixture-nav>
+        <div class="_h9b">
+          <div class="_lg">in</div>
+          <div class="_sr">Search</div>
+          <nav class="_nv" aria-label="Primary">
+            <a href="/feed/">Home</a>
+            <a href="/mynetwork/">My Network</a>
+            <a href="/jobs/">Jobs</a>
+            <a href="/messaging/">Messaging</a>
+            <a href="/notifications/">Notifications</a>
+            <a href="/in/me/">Me</a>
+          </nav>
+        </div>
+      </header>
+      <div class="_gr">
+        <div class="_cl" id="left-sidebar"><div class="_cd"><strong>Your Name</strong><br />Bioinformatics student</div></div>
+        <main class="_mn" id="main">
+          <div class="_cd" style="margin-bottom: 8px; color: #666">Start a post</div>
+          <div data-testid="mainFeed" id="feed"></div>
+        </main>
+        <div class="_cr" id="right-sidebar"><div class="_cd"><strong>LinkedIn News</strong><br />Top stories</div></div>
+      </div>
+    </div>
+
+    <script>
+      // Some posts carry their URN inside componentkey, some don't.
+      window.postHTML = function (o) {
+        const key = Number(o.id) % 2 ? `expanded-urn:li:activity:73000000000${o.id}-MAIN_FEED` : `c${o.id}f9a2e`;
+        const header = o.header ? `<div class="_hd">${o.header}</div>` : '';
+        const sub = o.promoted ? '<div class="_sb">Promoted</div>' : '<div class="_sb">2h&nbsp;•&nbsp;Edited</div>';
+        const inner = o.empty
+          ? ''
+          : `<h2 class="_v1">Feed post</h2>
+             <div class="_pc">
+               ${header}
+               <div class="_ac"><div class="_av"></div>
+                 <a class="_nm" href="/in/x/"><span>${o.author}</span></a>
+                 <div class="_sb">${o.headline || ''}</div>
+                 ${sub}
+               </div>
+               <div class="_tx" data-fixture-text><span>${o.text}</span></div>
+               <div class="_bt"><span>Like</span><span>Comment</span><span>Repost</span><span>Send</span></div>
+             </div>`;
+        return `<div role="listitem" componentkey="${key}" data-fixture-id="${o.id}">${inner}</div>`;
+      };
+
+      // Same posts as feed.html, in 2026 wording.
+      window.FIXTURE_POSTS = [
+        { id: '1001', author: 'Priya Raman', headline: 'Computational biologist', text: 'New preprint: we benchmarked five single-cell RNA-seq integration methods on 1.2M cells. Code and notebooks are on GitHub. #bioinformatics' },
+        { id: '1002', author: 'Acme Cloud', headline: '120,431 followers', text: 'Scale your data pipelines 10x with Acme Cloud. Start your free trial today.', promoted: true },
+        { id: '1003', author: 'Dev Patel', headline: 'Product manager', text: 'Five things I learned shipping a product in a weekend.', header: '<a href="/in/sam-ortiz/">Sam Ortiz</a><!-- -->&nbsp;likes this' },
+        { id: '1004', author: 'Jordan Lee', headline: 'CS student', text: "I'm excited to share that I'll be joining Google as a Software Engineering Intern this summer! #internships" },
+        { id: '1005', author: 'Mia Wong', headline: 'Founder', text: 'Our team just open-sourced a protein structure viewer for the browser.', header: 'Suggested' },
+        { id: '1006', author: 'Alex Kim', headline: 'Shared services lead', text: 'We are hiring a data engineer in Austin. DM me!', header: '<a href="/in/taylor-brooks/">Taylor Brooks</a><!-- -->&nbsp;commented' },
+        { id: '1007', author: 'Growth Academy', headline: 'Coaching', text: 'Crypto is the future of finance. Join our free webinar to learn how to 10x your portfolio.' },
+        { id: '1008', author: 'Lena Fischer', headline: 'Genomics researcher', text: 'Thread: how we cut our variant-calling pipeline runtime from 9 hours to 40 minutes.' },
+      ];
+
+      const onHome = location.pathname === '/feed/' || location.pathname === '/';
+      const posts = onHome
+        ? FIXTURE_POSTS
+        : [{ id: '2001', author: 'Someone', text: 'A post about my internship, seen on their profile page.' }];
+      document.getElementById('feed').innerHTML = posts.map(postHTML).join('');
+
+      window.appendPost = (o) => document.getElementById('feed').insertAdjacentHTML('beforeend', postHTML(o));
+      window.hydratePost = (o) => {
+        const host = document.querySelector(`[data-fixture-id="${o.id}"]`);
+        const tmp = document.createElement('div');
+        tmp.innerHTML = postHTML(o);
+        host.replaceChildren(...tmp.firstElementChild.childNodes);
+      };
+    </script>
+  </body>
+</html>

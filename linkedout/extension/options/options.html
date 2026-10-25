@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>control. settings</title>
+    <link rel="stylesheet" href="../shared/ui.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header class="page-head">
+        <h1><span class="brand">control.</span></h1>
+        <p class="muted">Your attention is limited. Decide what on LinkedIn gets it.</p>
+        <label class="row master">
+          <span class="label"
+            ><strong id="master-title">control. is on</strong
+            ><span class="hint" id="master-hint">Turn off to see LinkedIn untouched.</span></span
+          >
+          <input type="checkbox" class="switch" id="enabled" />
+        </label>
+      </header>
+
+      <div id="sections">
+        <section class="card" id="modes">
+          <h2>Hide by post type</h2>
+          <p class="muted">Instant, and no AI involved.</p>
+          <label class="row">
+            <span class="label">Promoted posts<span class="hint">Ads in your feed</span></span>
+            <input type="checkbox" class="switch" data-path="modes.hidePromoted" />
+          </label>
+          <label class="row">
+            <span class="label"
+              >Posts shown because someone else interacted<span class="hint"
+                >“Jane likes this”, “Sam commented on this”, “Alex reposted this”</span
+              ></span
+            >
+            <input type="checkbox" class="switch" data-path="modes.hideSocialActivity" />
+          </label>
+          <label class="row">
+            <span class="label"
+              >Suggested posts<span class="hint">Posts LinkedIn recommends from people you don’t follow</span></span
+            >
+            <input type="checkbox" class="switch" data-path="modes.hideSuggested" />
+          </label>
+        </section>
+
+        <section class="card" id="keywords">
+          <div class="card-head">
+            <h2>Hide by keyword</h2>
+            <input type="checkbox" class="switch" data-path="keywords.enabled" aria-label="Keyword filter on" />
+          </div>
+          <p class="muted">
+            Hide any post that contains one of these words or phrases. One per line, not case-sensitive.
+          </p>
+          <textarea
+            id="keyword-list"
+            rows="6"
+            spellcheck="false"
+            placeholder="internship&#10;thrilled to announce"
+          ></textarea>
+          <p class="hint-line muted">
+            <code>internship</code> also matches “internships” · <code>intern*</code> matches anything starting with
+            “intern” · phrases work too
+          </p>
+          <p class="save-state" id="keywords-state" aria-live="polite"></p>
+        </section>
+
+        <section class="card" id="ai">
+          <div class="card-head">
+            <h2>Describe what you want</h2>
+            <input type="checkbox" class="switch" data-path="aiFilter.enabled" aria-label="AI filter on" />
+          </div>
+          <p class="muted">
+            Tell control. in your own words. A small AI model on your own computer reads each post on your home feed and
+            hides the ones that don’t fit.
+          </p>
+          <textarea
+            id="instructions"
+            rows="5"
+            placeholder="Examples:&#10;Only show me posts about bioinformatics and computational biology.&#10;Hide posts promoting courses, webinars or newsletters.&#10;No motivational stories or humblebrags."
+          ></textarea>
+          <div class="actions">
+            <button class="btn primary" id="save-instructions" disabled>Save</button>
+            <span class="save-state" id="instructions-state" aria-live="polite"></span>
+          </div>
+
+          <div id="understood" class="understood" hidden>
+            <h3>How control. understood you</h3>
+            <ul id="understood-list"></ul>
+          </div>
+
+          <h3>AI model</h3>
+          <div class="choices" role="radiogroup">
+            <label class="choice">
+              <input type="radio" name="provider" value="local" />
+              <span
+                ><strong>On-device</strong>
+                <span class="muted">· free, private, nothing leaves your browser</span></span
+              >
+            </label>
+            <label class="choice">
+              <input type="radio" name="provider" value="anthropic" />
+              <span><strong>Claude</strong> <span class="muted">· every post, uses your Anthropic API key</span></span>
+            </label>
+          </div>
+
+          <div id="local-fields">
+            <h3>Personal learning</h3>
+            <p class="muted">Use “This should be shown” or “Hide more like this” on feed posts.
+              Corrections stay on this device, apply to these saved instructions, and do not retrain the encoder.
+              “Show anyway” only reveals a post.</p>
+            <button class="btn" id="reset-learning" type="button">Reset learning for these instructions</button>
+            <p id="learning-state" class="save-state" role="status"></p>
+            <label class="row">
+              <span class="label"
+                >Double-check uncertain posts with Claude<span class="hint"
+                  >Only the posts the on-device model isn’t sure about (about 1 in 5). Needs an API key.</span
+                ></span
+              >
+              <input type="checkbox" class="switch" data-path="aiFilter.claudeCheck" />
+            </label>
+          </div>
+
+          <div id="anthropic-fields">
+            <label class="field">
+              <span>Anthropic API key</span>
+              <span class="key-row">
+                <input type="password" id="api-key" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" />
+                <button class="btn" id="toggle-key" type="button">Show</button>
+              </span>
+              <span class="hint-line muted"
+                >Stored only in this browser. Get one at
+                <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer"
+                  >console.anthropic.com</a
+                >.</span
+              >
+            </label>
+            <label class="field">
+              <span>Model</span>
+              <select id="model"></select>
+            </label>
+          </div>
+
+          <label class="row">
+            <span class="label"
+              >Blur posts until they’re checked<span class="hint"
+                >Otherwise posts show first and disappear if they don’t fit</span
+              ></span
+            >
+            <input type="checkbox" class="switch" data-path="aiFilter.holdWhileChecking" />
+          </label>
+
+          <div class="test">
+            <button class="btn" id="test-ai">Try it on sample posts</button>
+            <div id="test-output" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section class="card" id="layout">
+          <h2>Home page</h2>
+          <p class="muted">
+            Applies to linkedin.com/feed only. Jobs, messaging, your network and profiles are untouched.
+          </p>
+          <label class="row">
+            <span class="label"
+              >Blank home page<span class="hint"
+                >Hide the whole home page. Only the top bar stays, so you can still go to My Network, Jobs,
+                Messaging…</span
+              ></span
+            >
+            <input type="checkbox" class="switch" data-path="layout.blankHome" />
+          </label>
+          <label class="row">
+            <span class="label">Hide left sidebar<span class="hint">Your profile card and shortcuts</span></span>
+            <input type="checkbox" class="switch" data-path="layout.hideLeftSidebar" />
+          </label>
+          <label class="row">
+            <span class="label"
+              >Hide right sidebar<span class="hint">LinkedIn News, “Add to your feed”, ads</span></span
+            >
+            <input type="checkbox" class="switch" data-path="layout.hideRightSidebar" />
+          </label>
+        </section>
+
+        <section class="card" id="advanced">
+          <h2>Troubleshooting</h2>
+          <label class="row">
+            <span class="label"
+              >Outline posts by status<span class="hint"
+                >Green shown, red hidden, yellow being checked. Also logs to the page console.</span
+              ></span
+            >
+            <input type="checkbox" class="switch" data-path="debug" />
+          </label>
+          <div class="actions">
+            <button class="btn" id="clear-cache">Forget saved AI decisions</button>
+            <span class="save-state" id="cache-state" aria-live="polite"></span>
+          </div>
+        </section>
+      </div>
+      <p id="toast" class="toast" role="status" aria-live="polite"></p>
+    </main>
+
+    <script src="../shared/settings.js"></script>
+    <script src="../shared/intent.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

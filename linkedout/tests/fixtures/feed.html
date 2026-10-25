@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+  A stand-in for linkedin.com/feed/ used by the end-to-end tests. Class names
+  and attributes copy LinkedIn's classic feed markup (data-id URNs,
+  update-components-*, scaffold-layout__*). See feed-2026.html for the newer
+  hashed-class markup. data-fixture-* attributes are for the tests only.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Feed | LinkedIn</title>
+    <style>
+      body { margin: 0; background: #f4f2ee; font: 14px/1.4 -apple-system, system-ui, sans-serif; color: rgba(0,0,0,.9); }
+      .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      .global-nav { position: fixed; top: 0; left: 0; right: 0; height: 52px; background: #fff; border-bottom: 1px solid #e8e8e8; z-index: 10; }
+      .global-nav__content { max-width: 1128px; margin: 0 auto; height: 100%; display: flex; align-items: center; gap: 28px; padding: 0 16px; }
+      .global-nav__logo { width: 34px; height: 34px; border-radius: 4px; background: #0a66c2; color: #fff; display: grid; place-items: center; font-weight: 700; }
+      .global-nav__search { flex: 1; max-width: 280px; padding: 7px 12px; border-radius: 4px; background: #edf3f8; color: #666; }
+      .global-nav__primary-items { display: flex; gap: 24px; margin-left: auto; list-style: none; padding: 0; }
+      .global-nav__primary-items a { color: rgba(0,0,0,.6); text-decoration: none; font-size: 12px; }
+      .authentication-outlet { padding-top: 76px; }
+      .scaffold-layout__inner { max-width: 1128px; margin: 0 auto; display: grid; grid-template-columns: 225px minmax(0, 555px) 300px; gap: 24px; padding: 0 16px; }
+      .card, .artdeco-card { background: #fff; border-radius: 8px; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+      .scaffold-layout__sidebar .card, .scaffold-layout__aside .card { padding: 16px; }
+      .share-box { padding: 16px; margin-bottom: 8px; color: #666; }
+      .feed-shared-update-v2 { margin-bottom: 8px; padding: 12px 16px 4px; }
+      .update-components-header { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #ebebeb; color: rgba(0,0,0,.6); font-size: 12px; }
+      .update-components-actor { display: grid; grid-template-columns: 48px 1fr; column-gap: 8px; margin-bottom: 8px; }
+      .update-components-actor__avatar { grid-row: span 3; width: 48px; height: 48px; border-radius: 50%; background: #c9d6e2; }
+      .update-components-actor__title { font-weight: 600; }
+      .update-components-actor__description, .update-components-actor__sub-description { font-size: 12px; color: rgba(0,0,0,.6); }
+      .update-components-text { margin: 4px 0 12px; }
+      .social-actions { display: flex; justify-content: space-around; border-top: 1px solid #ebebeb; padding: 6px 0; color: rgba(0,0,0,.6); font-weight: 600; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class="application-outlet">
+      <header id="global-nav" class="global-nav" data-fixture-nav>
+        <div class="global-nav__content">
+          <div class="global-nav__logo">in</div>
+          <div class="global-nav__search">Search</div>
+          <ul class="global-nav__primary-items">
+            <li><a href="/feed/">Home</a></li>
+            <li><a href="/mynetwork/">My Network</a></li>
+            <li><a href="/jobs/">Jobs</a></li>
+            <li><a href="/messaging/">Messaging</a></li>
+            <li><a href="/notifications/">Notifications</a></li>
+            <li><a href="/in/me/">Me</a></li>
+          </ul>
+        </div>
+      </header>
+      <div class="authentication-outlet">
+        <div id="voyager-feed">
+          <div class="scaffold-layout scaffold-layout--sidebar-main-aside">
+            <div class="scaffold-layout__inner">
+              <aside class="scaffold-layout__sidebar" id="left-sidebar">
+                <div class="card"><strong>Your Name</strong><br />Bioinformatics student<br /><br />Profile viewers 42</div>
+              </aside>
+              <main class="scaffold-layout__main" id="main">
+                <div class="share-box card">Start a post</div>
+                <div class="scaffold-finite-scroll">
+                  <div class="scaffold-finite-scroll__content" id="feed">
+                    <!-- posts are rendered by the script below -->
+                  </div>
+                </div>
+              </main>
+              <aside class="scaffold-layout__aside" id="right-sidebar">
+                <div class="card"><strong>LinkedIn News</strong><br />Top stories · 3,201 readers</div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Builds one post in LinkedIn's markup.
+      // opts: { id, author, headline, text, header, promoted, empty }
+      window.postHTML = function (o) {
+        const name = `<span aria-hidden="true">${o.author}</span><span class="visually-hidden">${o.author}</span>`;
+        const sub = o.promoted
+          ? '<span aria-hidden="true">Promoted</span><span class="visually-hidden">Promoted</span>'
+          : '<span aria-hidden="true">2h • Edited</span><span class="visually-hidden">2 hours ago</span>';
+        const header = o.header
+          ? `<div class="update-components-header"><span class="update-components-header__text-view">${o.header}</span></div>`
+          : '';
+        const inner = o.empty
+          ? ''
+          : `<div class="feed-shared-update-v2 artdeco-card" data-urn="urn:li:activity:${o.id}">
+              ${header}
+              <div class="update-components-actor">
+                <div class="update-components-actor__avatar"></div>
+                <span class="update-components-actor__title">${name}</span>
+                <span class="update-components-actor__description">${o.headline || ''}</span>
+                <span class="update-components-actor__sub-description">${sub}</span>
+              </div>
+              <div class="feed-shared-update-v2__description">
+                <div class="update-components-text" data-fixture-text><span dir="ltr">${o.text}</span></div>
+              </div>
+              <div class="social-actions"><span>Like</span><span>Comment</span><span>Repost</span><span>Send</span></div>
+            </div>`;
+        return `<div data-id="urn:li:activity:${o.id}" class="occludable-update" data-fixture-id="${o.id}"><div class="full-height">${inner}</div></div>`;
+      };
+
+      window.FIXTURE_POSTS = [
+        { id: '1001', author: 'Priya Raman', headline: 'Computational biologist', text: 'New preprint: we benchmarked five single-cell RNA-seq integration methods on 1.2M cells. Code and notebooks are on GitHub. #bioinformatics' },
+        { id: '1002', author: 'Acme Cloud', headline: '120,431 followers', text: 'Scale your data pipelines 10x with Acme Cloud. Start your free trial today.', promoted: true },
+        { id: '1003', author: 'Dev Patel', headline: 'Product manager', text: 'Five things I learned shipping a product in a weekend.', header: '<a href="#">Sam Ortiz</a> likes this' },
+        { id: '1004', author: 'Jordan Lee', headline: 'CS student', text: "I'm excited to share that I'll be joining Google as a Software Engineering Intern this summer! #internships" },
+        { id: '1005', author: 'Mia Wong', headline: 'Founder', text: 'Our team just open-sourced a protein structure viewer for the browser.', header: 'Suggested' },
+        { id: '1006', author: 'Alex Kim', headline: 'Recruiter', text: 'We are hiring a data engineer in Austin. DM me!', header: '<a href="#">Taylor Brooks</a> commented on this' },
+        { id: '1007', author: 'Growth Academy', headline: 'Coaching', text: 'Crypto is the future of finance. Join our free webinar to learn how to 10x your portfolio.' },
+        { id: '1008', author: 'Lena Fischer', headline: 'Genomics researcher', text: 'Thread: how we cut our variant-calling pipeline runtime from 9 hours to 40 minutes.' },
+      ];
+
+      // Off the home feed (e.g. /in/someone/recent-activity/) show one post
+      // that would be filtered on the feed, to prove other pages are left alone.
+      const onHome = location.pathname === '/feed/' || location.pathname === '/';
+      const posts = onHome
+        ? FIXTURE_POSTS
+        : [{ id: '2001', author: 'Someone', text: 'A post about my internship, seen on their profile page.' }];
+      document.getElementById('feed').innerHTML = posts.map(postHTML).join('');
+
+      // Test hooks: append a post (infinite scroll) or fill an empty one (lazy render).
+      window.appendPost = (o) => document.getElementById('feed').insertAdjacentHTML('beforeend', postHTML(o));
+      window.hydratePost = (o) => {
+        const host = document.querySelector(`[data-id="urn:li:activity:${o.id}"] .full-height`);
+        const tmp = document.createElement('div');
+        tmp.innerHTML = postHTML(o);
+        host.replaceWith(tmp.querySelector('.full-height'));
+      };
+    </script>
+  </body>
+</html>
