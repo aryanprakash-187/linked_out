@@ -1,4 +1,4 @@
-/* control. — injected into linkedin.com. Everything is scoped to classes on
+/* out — injected into linkedin.com. Everything is scoped to classes on
    <html> or data-control attributes the content script sets, so with the
    extension switched off this file changes nothing. */
 

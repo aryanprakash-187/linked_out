@@ -36,7 +36,20 @@ test('known LinkedIn genres add example anchors; topics split into parts', () =>
   assert.deepEqual(t.genres, ['bait']);
   assert.ok(t.anchors.includes('Comment YES if you agree'));
   const [ai] = parseInstructions('Only AI and machine learning').show;
-  assert.deepEqual(ai.anchors, ['AI and machine learning', 'AI', 'machine learning']);
+  assert.deepEqual(ai.anchors.slice(0, 3), ['AI and machine learning', 'AI', 'machine learning']);
+  assert.deepEqual(ai.genres, ['ai']);
+});
+
+test('broad subjects get example anchors and cover their narrower subjects', () => {
+  const intent = parseInstructions('Only show me posts about technology');
+  const [tech] = intent.show;
+  assert.deepEqual(tech.genres, ['tech', 'ai', 'software', 'crypto', 'startup']);
+  assert.ok(tech.anchors.length > 5);
+  // What "only technology" is weighed against: not AI or startups, but hiring and politics.
+  const others = globalThis.control.intent.otherSubjects(intent);
+  assert.ok(!others.includes('A company backed by Y Combinator'));
+  assert.ok(others.includes('Politics, elections and government policy'));
+  assert.ok(others.includes('Open job positions on my team'));
 });
 
 test('empty instructions parse to nothing', () => {
@@ -70,6 +83,27 @@ test('only mode hides posts that are not about the wanted topics', () => {
   assert.deepEqual(off, { decision: 'hide', reason: 'Not about genomics', uncertain: false });
   const on = F.judge(intent, { hide: [], show: [atZ(3)] }, fresh(intent));
   assert.equal(on.decision, 'show');
+});
+
+test('only mode keeps a post that is closer to the topic than to any other subject', () => {
+  // The feed is full of the topic, so z-scores alone would hide this post.
+  const intent = parseInstructions('Only show me technology');
+  const stats = fresh(intent);
+  for (let i = 0; i < 200; i++) F.observe({ hide: [], show: [atZ(1) + (i % 2 ? 0.02 : -0.02)] }, stats);
+  const post = { hide: [], show: [atZ(1)] };
+  assert.equal(F.judge(intent, { ...post, other: null }, stats).decision, 'hide');
+  assert.equal(F.judge(intent, { ...post, other: atZ(1) - 0.03 }, stats).decision, 'show');
+  // Closer to some other subject (say, hiring): still hidden.
+  assert.equal(F.judge(intent, { ...post, other: atZ(1) + 0.03 }, stats).decision, 'hide');
+});
+
+test('competing anchors drop the ones that overlap the topic', () => {
+  const a = [1, 0, 0];
+  const close = [Math.sqrt(0.9), Math.sqrt(0.1), 0]; // cosine ~0.95 with a
+  const far = [0, 1, 0];
+  assert.deepEqual(F.competingAnchors([[a]], [close, far]), [far]);
+  assert.equal(F.otherSim([0, 1, 0], [far]), 1);
+  assert.equal(F.otherSim([0, 1, 0], []), null);
 });
 
 test('"more of" topics never hide anything', () => {

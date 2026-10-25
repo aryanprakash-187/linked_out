@@ -3,9 +3,8 @@
 // runtime comfortably, so Transformers.js lives here.
 //
 // Pipeline per batch: parse instructions into topics (cached), embed the
-// topic anchors (cached), embed the posts, z-score each post against each
-// topic's running stats, and judge. Uncertain verdicts are flagged so the
-// background can optionally double-check them with Claude.
+// topic anchors and, for "only" mode, the competing subjects (cached), embed
+// the posts, z-score each post against each topic's running stats, and judge.
 import { env, pipeline } from '../vendor/transformers.min.js';
 
 const { intent: I, localFilter: F } = globalThis.control;
@@ -48,11 +47,13 @@ async function getProfile(instructions) {
     for (const t of topics) out.push(await embed(t.anchors));
     return out;
   };
+  const showVecs = await vecs(intent.show);
   profile = {
     instructions,
     intent,
     hideVecs: await vecs(intent.hide),
-    showVecs: await vecs(intent.show),
+    showVecs,
+    competing: intent.only ? F.competingAnchors(showVecs, await embed(I.otherSubjects(intent))) : [],
     stats: F.newIntentStats(intent),
   };
   return profile;
@@ -61,7 +62,11 @@ async function getProfile(instructions) {
 async function classify({ instructions, posts }) {
   const p = await getProfile(instructions);
   const vectors = await embed(posts.map((x) => (x.text || '').slice(0, 2000)));
-  const sims = vectors.map((v) => ({ hide: F.topicSims(v, p.hideVecs), show: F.topicSims(v, p.showVecs) }));
+  const sims = vectors.map((v) => ({
+    hide: F.topicSims(v, p.hideVecs),
+    show: F.topicSims(v, p.showVecs),
+    other: F.otherSim(v, p.competing),
+  }));
   // Learn from the whole batch first so the very first batch isn't judged
   // on the prior alone.
   for (const s of sims) F.observe(s, p.stats);

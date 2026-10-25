@@ -6,18 +6,33 @@
 // z-score: "how unusually close is this post to the topic?". Stats start
 // from a prior measured on our eval set, so the first posts are judged
 // sensibly before the feed has taught us anything.
+//
+// "Only show me X" has a second way in. Z-scores rank a post against the
+// user's own feed, so when most of the feed IS about X (technology, on
+// LinkedIn) only the top few can clear the bar and most wanted posts are
+// hidden. So a post also counts as X when it's closer to X than to every
+// other subject a LinkedIn post tends to be about (intent.otherSubjects),
+// which doesn't depend on what the rest of the feed looks like.
 (function (root) {
   const control = (root.control = root.control || {});
 
-  // Calibrated for Xenova/gte-small (q8) on 60 labelled LinkedIn-style posts
-  // x 10 filter scenarios (see README "Model choice").
+  // Calibrated for Xenova/gte-small (q8) on 83 labelled LinkedIn-style posts
+  // x 13 filter scenarios (eval/, see README "Model choice").
   const CONFIG = {
     zThreshold: 1.26, // z >= this means the post matches the topic
     // "Only show X" mode is stricter on itself: a wrongly hidden post costs the
-    // user something they wanted. 0.8 cut wanted-but-hidden posts from 5 to 2
-    // on the eval set for 0.8 points of accuracy.
-    onlyThreshold: 0.8,
+    // user something they wanted. Measured with the nearest-subject rule below.
+    onlyThreshold: 1.0,
     band: 0.5, // |z - threshold| < band means uncertain
+    // Only-mode, second way in: a post is about X if it's closer to X than to
+    // every other subject (margin 0). On feeds that are ~75% on-topic this
+    // keeps 41 of 48 wanted posts (z-scores alone: 23) and hides 18 of 18
+    // unwanted ones, and overall accuracy goes from 0.921 to 0.951.
+    nearMargin: 0,
+    nearBand: 0.01, // |lead| < this means uncertain
+    // Other subjects this close to one of X's own anchors count as X, not as
+    // competition.
+    overlap: 0.85,
     priorMean: 0.778,
     priorSd: 0.036,
     priorN: 20, // how many posts the prior is worth
@@ -52,6 +67,17 @@
     return topicVecs.map((anchors) => Math.max(...anchors.map((a) => cosine(postVec, a))));
   }
 
+  // Anchors of the other subjects, minus those that overlap the show topics.
+  function competingAnchors(showVecs, otherVecs, cfg = CONFIG) {
+    const own = showVecs.flat();
+    return otherVecs.filter((o) => !own.some((a) => cosine(a, o) >= cfg.overlap));
+  }
+
+  // Similarity of a post to the closest competing subject (null if none).
+  function otherSim(postVec, competing) {
+    return competing.length ? Math.max(...competing.map((a) => cosine(postVec, a))) : null;
+  }
+
   function side(topics, sims, stats, cfg, threshold = cfg.zThreshold) {
     let best = { z: -Infinity, i: -1 };
     sims.forEach((s, i) => {
@@ -72,12 +98,17 @@
   }
 
   // intent: from control.intent.parseInstructions
-  // sims: { hide: number[], show: number[] }   one per topic
+  // sims: { hide: number[], show: number[], other?: number|null }   one per topic
   // stats: { hide: Stats[], show: Stats[] }    one per topic
   // -> { decision: 'show'|'hide', reason, uncertain }
   function judge(intent, sims, stats, cfg = CONFIG) {
     const h = intent.hide.length ? side(intent.hide, sims.hide, stats.hide, cfg) : null;
     const s = intent.only && intent.show.length ? side(intent.show, sims.show, stats.show, cfg, cfg.onlyThreshold) : null;
+    if (s && !s.match && sims.other != null) {
+      const lead = Math.max(...sims.show) - sims.other - cfg.nearMargin;
+      s.match = lead >= 0;
+      if (s.match) s.sure = lead >= cfg.nearBand;
+    }
     const uncertain = Boolean((h && !h.sure) || (s && !s.sure));
     if (h && h.match) return { decision: 'hide', reason: 'Looks like ' + short(h.label), uncertain };
     if (s && !s.match) {
@@ -97,5 +128,16 @@
     return { hide: intent.hide.map(newStats), show: intent.show.map(newStats) };
   }
 
-  control.localFilter = { CONFIG, judge, observe, topicSims, newIntentStats, zScore, newStats, addSample };
+  control.localFilter = {
+    CONFIG,
+    judge,
+    observe,
+    topicSims,
+    competingAnchors,
+    otherSim,
+    newIntentStats,
+    zScore,
+    newStats,
+    addSample,
+  };
 })(globalThis);

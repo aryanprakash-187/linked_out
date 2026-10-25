@@ -1,16 +1,11 @@
 // Background service worker. Receives posts from the content script that
-// need an AI verdict (feature 3), batches them, asks the configured model,
-// caches the answers, and records the last error for the popup.
-//
-// Providers:
-//   local      on-device sentence encoder (offscreen page). Default. Free.
-//              Optionally sends the posts it's unsure about to Claude.
-//   anthropic  every post goes to Claude with the user's API key.
-importScripts('../vendor/anthropic-sdk.js', '../shared/settings.js', '../shared/prompt.js');
+// need an AI verdict (feature 3), batches them, runs the on-device model in
+// the offscreen page, caches the answers, and records the last error for the
+// popup. Nothing leaves the device.
+importScripts('../shared/settings.js');
 
 const control = globalThis.control;
 const S = control.settings;
-const P = control.prompt;
 
 const BATCH_SIZE = 8;
 const BATCH_WAIT_MS = 350; // gather posts that load together into one request
@@ -18,9 +13,6 @@ const MAX_CONCURRENT = 2;
 const AI_TIMEOUT_MS = 25000;
 const CACHE_KEY = 'controlVerdicts';
 const CACHE_MAX = 3000;
-
-// Server-side refusal fallbacks are available for these models.
-const FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5']);
 
 class ControlError extends Error {
   constructor(code, message) {
@@ -59,65 +51,7 @@ async function setStatus(patch) {
   await chrome.storage.local.set({ [S.STATUS_KEY]: Object.assign({}, got[S.STATUS_KEY], patch) });
 }
 
-// ---------- providers ----------
-
-function describeAnthropicError(err) {
-  const A = globalThis.Anthropic;
-  if (err instanceof A.AuthenticationError) return new ControlError('auth', 'Your Anthropic API key was rejected.');
-  if (err instanceof A.PermissionDeniedError)
-    return new ControlError('permission', "Your API key can't use this model.");
-  if (err instanceof A.NotFoundError)
-    return new ControlError('model', 'Model not found. Pick another model in settings.');
-  if (err instanceof A.RateLimitError)
-    return new ControlError('rate-limit', 'Rate limited by the Anthropic API. Try again shortly.');
-  if (err instanceof A.BadRequestError)
-    return new ControlError('bad-request', 'Anthropic API rejected the request: ' + err.message);
-  if (err instanceof A.APIConnectionError) return new ControlError('network', "Couldn't reach the Anthropic API.");
-  if (err instanceof A.APIError) return new ControlError('api', `Anthropic API error ${err.status}: ${err.message}`);
-  return new ControlError('unknown', String(err && err.message ? err.message : err));
-}
-
-async function classifyWithAnthropic(posts, settings) {
-  const secrets = await S.loadSecrets();
-  if (!secrets.anthropicApiKey) {
-    throw new ControlError('no-api-key', 'Add your Anthropic API key in control. settings to use the AI filter.');
-  }
-  const client = new globalThis.Anthropic({
-    apiKey: secrets.anthropicApiKey,
-    baseURL: secrets.anthropicBaseUrl || undefined,
-    dangerouslyAllowBrowser: true, // the key is the user's own, stored in their browser
-    maxRetries: 1,
-  });
-  const model = settings.aiFilter.model;
-  const params = {
-    model,
-    max_tokens: 4000,
-    system: P.buildSystemPrompt(settings.aiFilter.instructions),
-    messages: [{ role: 'user', content: P.buildUserMessage(posts) }],
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: P.VERDICT_SCHEMA } },
-  };
-  let response;
-  try {
-    response = FALLBACK_MODELS.has(model)
-      ? await client.beta.messages.create({
-          ...params,
-          betas: ['server-side-fallback-2026-07-01'],
-          fallbacks: 'default',
-        })
-      : await client.messages.create(params);
-  } catch (err) {
-    throw describeAnthropicError(err);
-  }
-  if (response.stop_reason === 'refusal') return new Map(); // fail open: show all
-  const text = response.content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
-  return P.parseVerdicts(
-    text,
-    posts.map((p) => p.key),
-  );
-}
+// ---------- on-device model ----------
 
 async function ensureOffscreen() {
   const url = chrome.runtime.getURL('offscreen/offscreen.html');
@@ -145,25 +79,11 @@ async function classifyLocal(posts, settings) {
   if (!res || res.error) {
     throw new ControlError('local', (res && res.error) || "The on-device model didn't respond.");
   }
-  const verdicts = new Map(res.verdicts.map((v) => [v.key, { decision: v.decision, reason: v.reason }]));
-  const unsure = posts.filter((p) => res.verdicts.find((v) => v.key === p.key && v.uncertain));
-  if (settings.aiFilter.claudeCheck && unsure.length) {
-    // Best effort: if Claude fails, keep the on-device verdicts.
-    try {
-      const second = await classifyWithAnthropic(unsure, settings);
-      for (const [key, v] of second) verdicts.set(key, v);
-    } catch (err) {
-      console.warn('[control.] Claude double-check failed:', err.code || '', err.message);
-    }
-  }
-  return verdicts;
+  return new Map(res.verdicts.map((v) => [v.key, { decision: v.decision, reason: v.reason }]));
 }
 
 function classify(posts, settings) {
-  const run =
-    settings.aiFilter.provider === 'anthropic'
-      ? classifyWithAnthropic(posts, settings)
-      : classifyLocal(posts, settings);
+  const run = classifyLocal(posts, settings);
   // Shorter than the content script's own 30s limit, so the popup gets a
   // real explanation instead of a silent timeout.
   let timer;
@@ -224,7 +144,7 @@ async function runBatch(batch) {
   } catch (err) {
     const e =
       err instanceof ControlError ? err : new ControlError('unknown', String(err && err.message ? err.message : err));
-    console.warn('[control.] AI filter failed:', e.code, e.message);
+    console.warn('[out] AI filter failed:', e.code, e.message);
     setStatus({ lastError: { code: e.code, message: e.message, at: Date.now() } });
     for (const b of batch) b.resolve({ key: b.key, decision: 'show', error: e.message });
   }
@@ -275,6 +195,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleTest(msg.samples).then(sendResponse);
     return true;
   }
+  // From the on-page panel; content scripts can't open extension pages.
+  if (msg.type === 'control:open-options') {
+    const hash = /^#[a-z]+$/.test(msg.hash || '') ? msg.hash : '';
+    if (hash) chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html' + hash) });
+    else chrome.runtime.openOptionsPage();
+    sendResponse({ ok: true });
+    return;
+  }
   if (msg.type === 'control:clear-cache') {
     cache = new Map();
     chrome.storage.local.remove(CACHE_KEY).then(() => sendResponse({ ok: true }));
@@ -282,12 +210,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
-// Changing the AI settings or key clears the last error so the popup doesn't
-// show a stale problem.
+// Changing the AI settings clears the last error so the popup doesn't show a
+// stale problem.
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes[S.SECRETS_KEY] || changes[S.SETTINGS_KEY]) setStatus({ lastError: null });
+  if (changes[S.SETTINGS_KEY]) setStatus({ lastError: null });
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') chrome.runtime.openOptionsPage();
+  // Versions with the Claude option stored an Anthropic API key here. The
+  // option is gone, so the key shouldn't stay behind.
+  chrome.storage.local.remove('controlSecrets');
 });

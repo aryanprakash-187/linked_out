@@ -5,7 +5,7 @@
 //   3. AI filter (your own words)                      async, batched in background
 (function () {
   const control = globalThis.control;
-  const { linkedin, rules } = control;
+  const { linkedin, rules, panel } = control;
   const S = control.settings;
 
   const AI_TIMEOUT_MS = 30000;
@@ -23,7 +23,7 @@
   };
 
   function log(...args) {
-    if (state.settings && state.settings.debug) console.log('[control.]', ...args);
+    if (state.settings && state.settings.debug) console.log('[out]', ...args);
   }
 
   // Hide the home page until settings load so "blank home" never flashes
@@ -100,7 +100,7 @@
     const label = bar.querySelector('.control-bar__label');
     label.textContent = '';
     const brand = document.createElement('b');
-    brand.textContent = 'control.';
+    brand.textContent = 'out';
     label.append(brand, ' ' + text);
     bar.querySelector('.control-bar__show').hidden = kind === 'pending';
   }
@@ -170,7 +170,7 @@
     try {
       request = chrome.runtime.sendMessage(message).catch(failed);
     } catch (err) {
-      // Throws synchronously when control. was updated or reloaded while this
+      // Throws synchronously when out was updated or reloaded while this
       // tab stayed open ("Extension context invalidated").
       request = Promise.resolve(failed(err));
     }
@@ -251,6 +251,65 @@
       markLandmarks();
     }
     for (const el of linkedin.findPosts(document)) processPost(el);
+    panel.sync();
+  }
+
+  // ---------- keep the feed loading ----------
+  //
+  // LinkedIn loads the next page when the empty element at the end of the
+  // feed comes within 2000px of the screen, and only at the moment it comes
+  // in (IntersectionObserver). With most posts collapsed to bars the feed is
+  // so short that the element never leaves that zone, so it never comes in
+  // again and the feed stops loading: scrolling can't help (you're already at
+  // the bottom) and neither can "Show anyway" (one post doesn't push it out).
+  // So when the end of the feed is near and nothing has arrived for a moment,
+  // hide that element for one frame: LinkedIn sees it come in and loads more.
+
+  const STALL_MS = 1000; // no new posts for this long while the end is near
+  const NUDGES_PER_SCROLL = 12; // auto-loads before waiting for the user to scroll again
+  const feedLoad = { count: -1, changedAt: 0, nudgedAt: 0, budget: NUDGES_PER_SCROLL };
+
+  function keepFeedLoading() {
+    const s = state.settings;
+    if (!s || !s.enabled || document.hidden || !linkedin.isFeedPath(location.pathname)) return;
+    if (html.classList.contains('control-blank-home')) return;
+    // LinkedIn copes on its own until out has collapsed something.
+    if (!document.querySelector('[data-control="hidden"]')) return;
+    const now = Date.now();
+    const count = linkedin.findPosts(document).length;
+    if (count !== feedLoad.count) {
+      feedLoad.count = count;
+      feedLoad.changedAt = now;
+      return;
+    }
+    if (now - feedLoad.changedAt < STALL_MS || now - feedLoad.nudgedAt < STALL_MS || feedLoad.budget <= 0) return;
+    const { trigger, button } = linkedin.findFeedEnd();
+    const end = button || trigger;
+    // Only when the end of the feed is within about a screen of being seen.
+    if (!end || end.getBoundingClientRect().top > innerHeight * 2) return;
+    feedLoad.nudgedAt = now;
+    feedLoad.budget--;
+    log('feed stalled at', count, 'posts; asking LinkedIn for more');
+    if (button && button.getClientRects().length) {
+      button.click();
+    } else if (trigger) {
+      const value = trigger.style.getPropertyValue('display');
+      const priority = trigger.style.getPropertyPriority('display');
+      trigger.style.setProperty('display', 'none', 'important');
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (value) trigger.style.setProperty('display', value, priority);
+          else trigger.style.removeProperty('display');
+        }),
+      );
+    }
+  }
+
+  // Scrolling, or trying to at the bottom of a short feed, means "keep going".
+  // Only real input counts: layout shifts fire scroll events too, and an idle
+  // tab shouldn't keep loading LinkedIn forever.
+  function refillBudget() {
+    feedLoad.budget = NUDGES_PER_SCROLL;
   }
 
   function resetAll() {
@@ -271,22 +330,27 @@
     scan();
   }
 
-  // ---------- popup stats ----------
+  // ---------- stats for the popup and the on-page panel ----------
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (!msg || msg.type !== 'control:stats') return;
+  function stats() {
     const count = (v) => document.querySelectorAll(`[data-control="${v}"]`).length;
-    sendResponse({
+    return {
       onFeed: linkedin.isFeedPath(location.pathname),
       hidden: count('hidden'),
       pending: count('pending'),
       shown: count('shown') + count('revealed'),
       aiError: state.lastAiError,
-    });
+    };
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (!msg || msg.type !== 'control:stats') return;
+    sendResponse(stats());
   });
 
   // ---------- boot ----------
 
+  panel.init({ settings: () => state.settings, stats, aiError: () => state.lastAiError });
   S.load().then((settings) => {
     applySettings(settings);
     new MutationObserver(scheduleScan).observe(html, { childList: true, subtree: true });
@@ -294,10 +358,10 @@
     setInterval(() => {
       if (location.pathname !== state.path) scan();
     }, 500);
+    setInterval(keepFeedLoading, 250);
+    for (const type of ['wheel', 'touchmove', 'keydown', 'pointerdown']) {
+      document.addEventListener(type, refillBudget, { capture: true, passive: true });
+    }
   });
   S.onChange(applySettings);
-  // A newly added API key should take effect without reloading LinkedIn.
-  chrome.storage.onChanged.addListener((changes) => {
-    if (changes[S.SECRETS_KEY] && state.settings) applySettings(state.settings);
-  });
 })();

@@ -77,7 +77,7 @@
                  <div class="_sb">${o.headline || ''}</div>
                  ${sub}
                </div>
-               <div class="_tx" data-fixture-text><span>${o.text}</span></div>
+               <div class="_tx" data-fixture-text${o.tall ? ' style="min-height: 560px"' : ''}><span>${o.text}</span></div>
                <div class="_bt"><span>Like</span><span>Comment</span><span>Repost</span><span>Send</span></div>
              </div>`;
         return `<div role="listitem" componentkey="${key}" data-fixture-id="${o.id}">${inner}</div>`;
@@ -99,9 +99,38 @@
       const posts = onHome
         ? FIXTURE_POSTS
         : [{ id: '2001', author: 'Someone', text: 'A post about my internship, seen on their profile page.' }];
-      document.getElementById('feed').innerHTML = posts.map(postHTML).join('');
+      // Like LinkedIn, the feed list ends in an empty element that loads the
+      // next page when it comes near the screen.
+      document.getElementById('feed').innerHTML =
+        posts.map(postHTML).join('') + '<div data-fixture-feed-end style="display: flex"></div>';
+      const feedEnd = document.querySelector('[data-fixture-feed-end]');
 
-      window.appendPost = (o) => document.getElementById('feed').insertAdjacentHTML('beforeend', postHTML(o));
+      window.appendPost = (o) => feedEnd.insertAdjacentHTML('beforebegin', postHTML(o));
+
+      // ?paging: LinkedIn's infinite scroll. An IntersectionObserver with a
+      // 2000px bottom margin loads 5 tall posts when the end comes into that
+      // zone, and ignores it coming in again while the page is still
+      // rendering, which is how the real feed gets stuck when hidden posts
+      // collapse right after they arrive.
+      window.fixturePages = 0;
+      if (new URLSearchParams(location.search).has('paging')) {
+        let busy = false;
+        let next = 5001;
+        new IntersectionObserver(
+          (entries) => {
+            if (busy || !entries.some((e) => e.isIntersecting)) return;
+            busy = true;
+            setTimeout(() => {
+              for (let i = 0; i < 5; i++) {
+                appendPost({ id: String(next++), author: 'Growth Co', text: 'Join our free webinar on growth.', tall: true });
+              }
+              window.fixturePages++;
+              setTimeout(() => (busy = false), 400);
+            }, 100);
+          },
+          { rootMargin: '0px 0px 2000px 0px' },
+        ).observe(feedEnd);
+      }
       window.hydratePost = (o) => {
         const host = document.querySelector(`[data-fixture-id="${o.id}"]`);
         const tmp = document.createElement('div');

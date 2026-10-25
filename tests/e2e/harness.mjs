@@ -1,8 +1,7 @@
 // Loads the unpacked extension into Chromium and serves the LinkedIn feed
 // fixture at https://www.linkedin.com/feed/ so the content script runs for
-// real. Also provides a mock Anthropic API for the AI filter.
+// real.
 import { chromium } from 'playwright';
-import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -53,10 +52,6 @@ export async function setSettings(worker, patch) {
   }, patch);
 }
 
-export async function setSecrets(worker, secrets) {
-  await worker.evaluate((s) => globalThis.control.settings.saveSecrets(s), secrets);
-}
-
 export async function openFeed(context) {
   const page = await context.newPage();
   await page.goto('https://www.linkedin.com/feed/');
@@ -78,53 +73,4 @@ export async function postStates(page) {
 
 export async function barText(page, id) {
   return page.locator(`[data-fixture-id="${id}"] .control-bar__label`).innerText();
-}
-
-// Minimal stand-in for POST /v1/messages. Hides posts mentioning crypto or
-// webinars, shows the rest, after an artificial delay.
-export async function startMockAnthropic({ delayMs = 400, fail = null } = {}) {
-  const requests = [];
-  const server = http.createServer((req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Private-Network', 'true');
-    if (req.method === 'OPTIONS') return res.end();
-    let raw = '';
-    req.on('data', (c) => (raw += c));
-    req.on('end', () => {
-      const body = JSON.parse(raw);
-      requests.push({ url: req.url, headers: req.headers, body });
-      setTimeout(() => {
-        if (fail) {
-          res.statusCode = fail.status;
-          res.setHeader('content-type', 'application/json');
-          return res.end(JSON.stringify({ type: 'error', error: { type: fail.type, message: fail.message } }));
-        }
-        const content = body.messages[0].content;
-        const posts = JSON.parse(content.slice(content.indexOf('[')));
-        const verdicts = posts.map((p) =>
-          /crypto|webinar/i.test(p.text)
-            ? { id: p.id, decision: 'hide', reason: 'Crypto promotion' }
-            : { id: p.id, decision: 'show', reason: 'Fits your interests' },
-        );
-        res.setHeader('content-type', 'application/json');
-        res.end(
-          JSON.stringify({
-            id: 'msg_mock',
-            type: 'message',
-            role: 'assistant',
-            model: body.model,
-            content: [{ type: 'text', text: JSON.stringify({ verdicts }) }],
-            stop_reason: 'end_turn',
-            stop_sequence: null,
-            usage: { input_tokens: 10, output_tokens: 10 },
-          }),
-        );
-      }, delayMs);
-    });
-  });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const url = `http://127.0.0.1:${server.address().port}`;
-  return { url, requests, close: () => new Promise((r) => server.close(r)) };
 }

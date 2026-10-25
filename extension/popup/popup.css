@@ -44,3 +44,16 @@ footer {
   justify-content: flex-end;
   margin-top: 10px;
 }
+
+/* The wordmark is the "out" button from LinkedIn's top bar (and the icon). */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12em 0.32em 0.18em;
+  border: 1px solid rgba(10, 102, 194, 0.45);
+  border-radius: 0.2em;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}

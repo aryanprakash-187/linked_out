@@ -1,7 +1,6 @@
 (async function () {
   const S = globalThis.control.settings;
   let settings = await S.load();
-  let secrets = await S.loadSecrets();
 
   const $ = (id) => document.getElementById(id);
   const get = (obj, path) => path.split('.').reduce((o, k) => o[k], obj);
@@ -13,8 +12,6 @@
 
   function aiReady() {
     if (!settings.aiFilter.instructions.trim()) return 'Describe what you want in settings first';
-    if (settings.aiFilter.provider === 'anthropic' && !secrets.anthropicApiKey)
-      return 'Add an API key in settings first';
     return '';
   }
 
@@ -28,8 +25,7 @@
     const n = settings.keywords.list.length;
     $('kw-hint').textContent = n === 1 ? '1 keyword' : `${n} keywords`;
     const missing = aiReady();
-    $('ai-hint').textContent =
-      missing || (settings.aiFilter.provider === 'anthropic' ? 'Claude' : 'On-device AI');
+    $('ai-hint').textContent = missing || 'On-device AI';
   }
 
   async function save() {
@@ -75,15 +71,15 @@
       try {
         stats = await chrome.tabs.sendMessage(tab.id, { type: 'control:stats' });
       } catch {
-        stats = null; // not a LinkedIn tab, or the page loaded before control.
+        stats = null; // not a LinkedIn tab, or the page loaded before out
       }
     }
     if (!settings.enabled) {
-      status.textContent = 'control. is off. LinkedIn looks the way LinkedIn wants.';
+      status.textContent = 'out is off. LinkedIn looks the way LinkedIn wants.';
     } else if (!stats) {
-      status.textContent = 'Open LinkedIn to see control. at work.';
+      status.textContent = 'Open LinkedIn to see out at work.';
     } else if (!stats.onFeed) {
-      status.textContent = 'control. filters your home feed. Other pages are left alone.';
+      status.textContent = 'out filters your home feed. Other pages are left alone.';
     } else if (settings.layout.blankHome) {
       status.textContent = 'Home page is blank. Use the top bar to go where you meant to go.';
     } else {
@@ -104,9 +100,8 @@
     render();
     refreshStatus();
   });
-  chrome.storage.onChanged.addListener(async (changes) => {
-    if (changes[S.SECRETS_KEY]) secrets = await S.loadSecrets();
-    if (changes[S.STATUS_KEY] || changes[S.SECRETS_KEY]) {
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes[S.STATUS_KEY]) {
       render();
       refreshStatus();
     }

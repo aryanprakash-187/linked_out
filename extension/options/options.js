@@ -9,7 +9,6 @@
   };
 
   let settings = await S.load();
-  let secrets = await S.loadSecrets();
 
   // Posts used by "Try it on sample posts".
   const SAMPLE_POSTS = [
@@ -52,7 +51,7 @@
 
   function render() {
     $('enabled').checked = settings.enabled;
-    $('master-title').textContent = settings.enabled ? 'control. is on' : 'control. is off';
+    $('master-title').textContent = settings.enabled ? 'out is on' : 'out is off';
     $('master-hint').textContent = settings.enabled
       ? 'Turn off to see LinkedIn untouched.'
       : 'LinkedIn is untouched until you turn this back on.';
@@ -60,13 +59,6 @@
     for (const input of document.querySelectorAll('input[data-path]')) {
       input.checked = Boolean(get(settings, input.dataset.path));
     }
-    for (const radio of document.querySelectorAll('input[name="provider"]')) {
-      radio.checked = radio.value === settings.aiFilter.provider;
-    }
-    const isAnthropic = settings.aiFilter.provider === 'anthropic';
-    $('local-fields').hidden = isAnthropic;
-    $('anthropic-fields').hidden = !S.usesClaude(settings.aiFilter);
-    $('model').value = settings.aiFilter.model;
     renderUnderstood();
   }
 
@@ -76,7 +68,7 @@
     const list = $('understood-list');
     list.textContent = '';
     const text = settings.aiFilter.instructions.trim();
-    const show = text && settings.aiFilter.provider === 'local';
+    const show = Boolean(text);
     $('understood').hidden = !show;
     if (!show) return;
     const intent = globalThis.control.intent.parseInstructions(text);
@@ -102,7 +94,7 @@
 
   $('enabled').addEventListener('change', (e) => {
     settings.enabled = e.target.checked;
-    save(settings.enabled ? 'control. is on' : 'control. is off');
+    save(settings.enabled ? 'out is on' : 'out is off');
   });
 
   for (const input of document.querySelectorAll('input[data-path]')) {
@@ -185,57 +177,16 @@
   });
   $('save-instructions').addEventListener('click', saveInstructions);
 
-  // ---------- provider, key, model ----------
+  // ---------- readiness ----------
 
   function aiMissing() {
     if (!settings.aiFilter.instructions.trim()) return 'Write what you want to see (or not) first.';
-    if (settings.aiFilter.provider === 'anthropic' && !secrets.anthropicApiKey) {
-      return 'Add your Anthropic API key below to turn this on.';
-    }
-    if (settings.aiFilter.provider === 'local' && settings.aiFilter.claudeCheck && !secrets.anthropicApiKey) {
-      return 'Add your Anthropic API key below for the Claude double-check.';
-    }
     return '';
   }
-
-  for (const radio of document.querySelectorAll('input[name="provider"]')) {
-    radio.addEventListener('change', () => {
-      settings.aiFilter.provider = radio.value;
-      save();
-    });
-  }
-
-  for (const m of S.MODELS) {
-    const opt = document.createElement('option');
-    opt.value = m.id;
-    opt.textContent = m.label;
-    $('model').append(opt);
-  }
-  $('model').addEventListener('change', () => {
-    settings.aiFilter.model = $('model').value;
-    save();
-  });
-
-  $('api-key').value = secrets.anthropicApiKey;
-  async function saveKey() {
-    const key = $('api-key').value.trim();
-    if (key === secrets.anthropicApiKey) return;
-    secrets.anthropicApiKey = key;
-    await S.saveSecrets(secrets);
-    toast(key ? 'API key saved' : 'API key removed');
-  }
-  $('api-key').addEventListener('change', saveKey);
-  $('api-key').addEventListener('blur', saveKey);
-  $('toggle-key').addEventListener('click', () => {
-    const input = $('api-key');
-    input.type = input.type === 'password' ? 'text' : 'password';
-    $('toggle-key').textContent = input.type === 'password' ? 'Show' : 'Hide';
-  });
 
   // ---------- test ----------
 
   $('test-ai').addEventListener('click', async () => {
-    await saveKey();
     if (instructionsDirty()) await saveInstructions();
     const out = $('test-output');
     out.textContent = '';
@@ -287,6 +238,18 @@
   $('clear-cache').addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'control:clear-cache' });
     $('cache-state').textContent = 'Done. Posts will be re-checked next time.';
+  });
+
+  // ---------- submit ----------
+
+  // Everything already saves as you go; Submit saves anything still pending
+  // and tells you you're done.
+  $('submit').addEventListener('click', async () => {
+    await saveKeywords();
+    await saveInstructions();
+    $('submit-state').textContent = "You're all set. Open LinkedIn to see your feed.";
+    $('submit-state').classList.add('ok');
+    toast('Saved');
   });
 
   // ---------- keep in sync with the popup ----------

@@ -31,9 +31,9 @@ for (const fixture of FIXTURES) {
           1007: 'shown',
           1008: 'shown',
         });
-        assert.equal(await barText(page, '1002'), 'control. hid a post · Promoted');
-        assert.equal(await barText(page, '1003'), 'control. hid a post · Sam Ortiz likes this');
-        assert.equal(await barText(page, '1004'), 'control. hid a post · Keyword: internship');
+        assert.equal(await barText(page, '1002'), 'out hid a post · Promoted');
+        assert.equal(await barText(page, '1003'), 'out hid a post · Sam Ortiz likes this');
+        assert.equal(await barText(page, '1004'), 'out hid a post · Keyword: internship');
         // Hidden content really is invisible, and visible posts have no bar.
         assert.equal(await page.locator('[data-fixture-id="1002"] [data-fixture-text]').isVisible(), false);
         assert.equal(await page.locator('[data-fixture-id="1001"] .control-bar').count(), 0);
@@ -62,7 +62,7 @@ for (const fixture of FIXTURES) {
         assert.equal(s['1003'], 'shown');
         assert.equal(s['1006'], 'shown');
         assert.equal(s['1005'], 'hidden');
-        assert.equal(await barText(page, '1005'), 'control. hid a post · Suggested by LinkedIn');
+        assert.equal(await barText(page, '1005'), 'out hid a post · Suggested by LinkedIn');
       }));
 
     test('keyword list and keyword toggle apply live', () =>
@@ -217,3 +217,36 @@ for (const fixture of FIXTURES) {
       }));
   });
 }
+
+// LinkedIn's infinite scroll (2026 markup): when out hides most posts, the
+// feed must keep loading instead of getting stuck at the bottom.
+test('the feed keeps loading when most posts are hidden', () =>
+  withBrowser('feed-2026.html', async ({ context, worker }) => {
+    // Every post the feed loads mentions a webinar.
+    await setSettings(worker, { keywords: { enabled: true, list: ['webinar'] } });
+    const page = await context.newPage();
+    await page.goto('https://www.linkedin.com/feed/?paging');
+    await page.waitForSelector('html[data-control-ready]', { state: 'attached' });
+    // Without help, LinkedIn's observer stalls after the first page or two.
+    await page.waitForTimeout(6000);
+    const pages = await page.evaluate(() => fixturePages);
+    assert.ok(pages >= 4, `expected the feed to keep loading, got ${pages} pages`);
+    const states = Object.values(await postStates(page));
+    assert.ok(states.filter((s) => s === 'hidden').length >= 20);
+    // The element LinkedIn watches is left as it was.
+    assert.equal(await page.locator('[data-fixture-feed-end]').getAttribute('style'), 'display: flex;');
+  }));
+
+test('the feed is left alone when nothing is hidden', () =>
+  withBrowser('feed-2026.html', async ({ context, worker }) => {
+    await setSettings(worker, {
+      modes: { hidePromoted: false, hideSocialActivity: false, hideSuggested: false },
+      keywords: { enabled: false, list: [] },
+    });
+    const page = await context.newPage();
+    await page.goto('https://www.linkedin.com/feed/?paging');
+    await page.waitForSelector('html[data-control-ready]', { state: 'attached' });
+    await page.waitForTimeout(4000);
+    // Tall posts push the end out of reach after one page; out doesn't load more.
+    assert.equal(await page.evaluate(() => fixturePages), 1);
+  }));

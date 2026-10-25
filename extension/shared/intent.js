@@ -1,6 +1,6 @@
 // Turns the user's free-text instructions into topics the on-device model can
 // compare posts against. Deterministic, so it's unit-testable and the options
-// page can show "here's how control. understood you".
+// page can show "here's how out understood you".
 //
 //   "Only show me AI posts. No humblebrags or engagement bait."
 //   -> { only: true,
@@ -81,6 +81,94 @@
     },
   ];
 
+  // Broad subjects most LinkedIn posts fall under. A topic that names one gets
+  // its examples as extra anchors: on its own, "technology" embeds as vaguely
+  // corporate, and a post about voice AI for dentists didn't look like it.
+  // The subjects a topic doesn't name, plus the genres above, are what
+  // "Only show me X" compares a post against (see local-filter.js). `covers`
+  // lists narrower subjects that are part of this one, so they aren't
+  // treated as competition (AI posts are technology posts).
+  const SUBJECTS = [
+    {
+      id: 'tech',
+      trigger: /\btech\b|technolog|gadgets?|computing|digital/i,
+      covers: ['ai', 'software', 'crypto', 'startup'],
+      anchors: [
+        'A new software product, app or platform launch',
+        'A startup building software that uses AI to automate work for an industry',
+        'Healthtech, fintech and edtech: software for doctors, banks and schools',
+        'Engineers writing code and building cloud infrastructure, databases and APIs',
+        'Artificial intelligence and machine learning models',
+        'Hardware, chips, robotics and devices',
+        'Cybersecurity, data breaches and privacy',
+        'Crypto, blockchain and web3',
+      ],
+    },
+    {
+      id: 'ai',
+      trigger: /\bai\b|artificial intelligence|machine learning|\bml\b|\bllms?\b|gen ?ai|deep learning/i,
+      anchors: ['Artificial intelligence and machine learning models', 'Training and deploying large language models'],
+    },
+    {
+      id: 'software',
+      trigger: /software|programming|coding|\bcode\b|developers?\b|devops/i,
+      anchors: [
+        'Writing code: refactoring, testing and debugging',
+        'Our engineering team migrated databases and cut latency',
+        'Programming languages and developer tools',
+      ],
+    },
+    {
+      id: 'crypto',
+      trigger: /crypto|bitcoin|blockchain|web ?3|defi\b|nfts?\b/i,
+      anchors: ['Crypto, blockchain, tokens and web3'],
+    },
+    {
+      id: 'startup',
+      trigger: /start-?ups?|founders?|entrepreneur|venture|y ?combinator|\byc\b|fundrais/i,
+      anchors: [
+        'Founders announce the launch of their new startup',
+        'Our startup raised a seed round from investors',
+        'A company backed by Y Combinator',
+      ],
+    },
+    {
+      id: 'science',
+      trigger: /scien|research|biolog|genom|physics|chemistry/i,
+      anchors: ['Scientific research, papers and lab results'],
+    },
+    {
+      id: 'business',
+      trigger: /business|financ|econom|markets?\b|invest|real estate|housing/i,
+      anchors: ['Interest rates, inflation and the economy', 'Company earnings, revenue and growth', 'The housing market and real estate'],
+    },
+    {
+      id: 'politics',
+      trigger: /politic|elections?|government|policy|policies/i,
+      anchors: ['Politics, elections and government policy'],
+    },
+    {
+      id: 'sales',
+      trigger: /sales|marketing|branding/i,
+      anchors: ['Sales and marketing tips to grow revenue'],
+    },
+    {
+      id: 'leadership',
+      trigger: /leadership|management|managers?\b|workplace|productivity/i,
+      anchors: ['Leadership advice about managing teams and workplace culture'],
+    },
+    {
+      id: 'health',
+      trigger: /health|medic|hospital|nurs|doctor|fitness|wellness/i,
+      anchors: ['Hospitals, nurses, doctors and patient care', 'Running, fitness and wellbeing'],
+    },
+    {
+      id: 'life',
+      trigger: /personal|family|life\b|volunteer|community|small business/i,
+      anchors: ['A personal update about family and life outside work', 'We volunteered at a community event this weekend'],
+    },
+  ];
+
   // Order matters only for readability; matching uses the earliest hit.
   const NEG_RE =
     /\b(?:hide|no|not|don'?t|do not|never|without|less|stop|remove|block|filter out|skip|avoid|tired of|hate|exclude|get rid of)\b/i;
@@ -121,13 +209,24 @@
       .filter((s) => s && s.toLowerCase() !== label.toLowerCase());
     const anchors = [label, ...parts];
     const genres = [];
-    for (const g of GENRES) {
-      if (g.trigger.test(label)) {
-        genres.push(g.id);
-        anchors.push(...g.anchors);
+    const all = [...GENRES, ...SUBJECTS];
+    for (const g of all) {
+      if (!g.trigger.test(label)) continue;
+      for (const id of [g.id, ...(g.covers || [])]) {
+        if (genres.includes(id)) continue;
+        genres.push(id);
+        anchors.push(...all.find((x) => x.id === id).anchors);
       }
     }
     return { label, anchors: [...new Set(anchors)], genres };
+  }
+
+  // The other things a post could be about, for "Only show me X": every genre
+  // and subject none of the show topics named. Returns their anchors.
+  function otherSubjects(intent) {
+    const named = new Set(intent.show.flatMap((t) => t.genres));
+    const anchors = [...GENRES, ...SUBJECTS].filter((g) => !named.has(g.id)).flatMap((g) => g.anchors);
+    return [...new Set(anchors)];
   }
 
   // Returns { only, hide: Topic[], show: Topic[], more: string[] }.
@@ -159,5 +258,5 @@
     return out;
   }
 
-  control.intent = { parseInstructions, GENRES };
+  control.intent = { parseInstructions, otherSubjects, GENRES, SUBJECTS };
 })(globalThis);

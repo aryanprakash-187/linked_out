@@ -1,12 +1,12 @@
-# control. — decide what gets your attention on LinkedIn
+# out — decide what gets your attention on LinkedIn
 
 A Chrome (MV3) extension that cleans up the LinkedIn home feed. It hides promoted posts, "Jane likes this" network
 activity, keyword matches, and anything you describe in your own words ("no humblebrags, only bioinformatics").
-Each hidden post collapses to a one-line bar, **"control. hid a post · Looks like engagement bait [Show anyway]"**,
+Each hidden post collapses to a one-line bar, **"out hid a post · Looks like engagement bait [Show anyway]"**,
 so nothing is ever lost.
 
 The AI runs **on your own computer**: a 34 MB sentence-embedding model ships inside the extension. It's free per
-user, private (posts never leave the browser), and takes about 5 ms per post. Claude is optional.
+user, private (posts never leave the browser), and takes about 5 ms per post. No API key, no network calls.
 
 Built for a hackathon, **Track 4: AI-Powered Consumer Products for 1 Billion People**, which is judged on
 **innovation, scale and real-world application**. The product is ambient: there's no new app, and the feed you
@@ -33,14 +33,16 @@ you want under "Describe what you want", and click Save.
 ```
 linked_out/
 ├── README.md
-├── package.json              # dev deps: @huggingface/transformers, esbuild, playwright, @anthropic-ai/sdk
+├── package.json              # dev deps: @huggingface/transformers, esbuild, playwright
 ├── extension/                # the unpacked extension (no build step; plain classic scripts on globalThis.control)
 │   ├── manifest.json         # MV3; CSP allows 'wasm-unsafe-eval' for ONNX Runtime
 │   ├── background/
-│   │   └── background.js     # batching queue (8 posts / 350 ms), provider routing, verdict cache, error status
+│   │   └── background.js     # batching queue (8 posts / 350 ms), on-device model calls, verdict cache, error status
 │   ├── content/
 │   │   ├── linkedin.js       # LinkedIn DOM knowledge: find posts, extract {urn, author, text, header}
 │   │   ├── content.js        # per-post pipeline: rules → cache → AI; draws the "Show anyway" bar
+│   │   ├── panel.js          # the "out" button just before LinkedIn's logo + the glass panel it opens
+│   │   ├── panel-style.js    # the panel's CSS, as a string for its shadow roots (nothing web-accessible)
 │   │   └── content.css
 │   ├── offscreen/
 │   │   ├── offscreen.html    # hidden page that hosts the model (service workers can't)
@@ -50,12 +52,11 @@ linked_out/
 │   │   ├── rules.js          # deterministic filters: promoted, social activity, suggested, keywords
 │   │   ├── intent.js         # parses free-text instructions → hide/show topics (+ genre example anchors)
 │   │   ├── local-filter.js   # z-score decision logic, thresholds, running per-topic stats (pure, unit-tested)
-│   │   ├── prompt.js         # Claude prompt, JSON schema, verdict parser
 │   │   └── ui.css
-│   ├── options/              # settings page; shows "How control. understood you"
+│   ├── options/              # settings page; shows "How out understood you"
 │   ├── popup/                # toolbar popup: on/off, counts, last AI error
 │   ├── models/Xenova/gte-small/   # bundled model: tokenizer + int8 ONNX (34 MB), from `npm run models`
-│   ├── vendor/               # from `npm run vendor`: anthropic-sdk.js, transformers.min.js, ort/*.wasm (27 MB)
+│   ├── vendor/               # from `npm run vendor`: transformers.min.js, ort/*.wasm
 │   └── icons/
 ├── eval/
 │   ├── data.mjs              # 65 hand-written LinkedIn-style posts, multi-label, + 11 filter scenarios
@@ -65,8 +66,8 @@ linked_out/
 │   ├── fetch-models.mjs      # downloads the model from Hugging Face into extension/models/
 │   └── make-icons.py
 └── tests/
-    ├── unit/                 # rules, settings/prompt, intent parser + decision logic
-    ├── e2e/                  # Playwright: real extension vs. fixture feeds; mock Anthropic API; real local model
+    ├── unit/                 # rules, settings, intent parser + decision logic
+    ├── e2e/                  # Playwright: real extension vs. fixture feeds; real local model
     └── fixtures/             # feed.html (classic markup), feed-2026.html (2026 markup)
 ```
 
@@ -76,9 +77,10 @@ linked_out/
 |---|---|---|
 | **1. Hide by post type**: promoted, network activity, suggested | `shared/rules.js` | Regex on the post's header line. Instant. |
 | **2. Hide by keyword** | `shared/rules.js` | Word-boundary match, plurals, `intern*` wildcards, phrases. |
-| **3. "Describe what you want"** | `intent.js`, `local-filter.js`, `offscreen/`, `background/` | On-device model (default) or Claude. |
+| **3. "Describe what you want"** | `intent.js`, `local-filter.js`, `offscreen/`, `background/` | On-device model only. |
 | **4. Home page layout**: blank home, hide sidebars | `content/` | CSS on tagged landmarks. |
 | Hidden-post bar with **Show anyway**, optional blur while checking | `content/content.js` | |
+| **"out" button + panel** on LinkedIn itself: every switch, plus "Describe what you want" | `content/panel.js` | Shadow DOM, just before the logo; floats bottom-left if the logo isn't found. |
 
 ## Architecture
 
@@ -86,7 +88,6 @@ linked_out/
 post ─▶ 1. rules (regex)                 instant                          ─▶ hide, or continue
      ─▶ 2. verdict cache                 key = config hash + post URN     ─▶ reuse
      ─▶ 3. on-device model (gte-small)   offscreen page, ~5 ms/post       ─▶ hide / show (+ "uncertain" flag)
-     ─▶ 4. Claude double-check           optional, uncertain posts only (~14%), needs the user's API key
      ─▶ any error: fail open (show the post, report in popup)
 ```
 
@@ -104,11 +105,27 @@ post ─▶ 1. rules (regex)                 instant                          �
    feed posts are to it, and a post is judged by its **z-score**. The stats start from a prior measured on the eval
    set, so cold start works.
 5. Decision: hide if z ≥ 1.26 for any hide topic ("Looks like crypto"). In only-mode, hide if z < 0.8 for all show
-   topics ("Not about genomics"). Within ±0.5 of a threshold the verdict is flagged **uncertain**, and uncertain
-   posts go to Claude if the user turned on "Double-check uncertain posts with Claude".
+   topics ("Not about genomics"). Within ±0.5 of a threshold the verdict is flagged **uncertain** (unused for
+   now; a hook for a second on-device model).
 
-**Providers** (`settings.aiFilter.provider`): `local` (default) or `anthropic` (every post goes to Claude; the
-default model is now `claude-haiku-5-5`). Settings saved by older versions (`chrome-ai`) migrate to `local`.
+## Decision: on-device AI only (no Claude, no API key)
+
+Decided 2026-10-24. The Claude provider (every post sent to Claude), the "Double-check uncertain posts with Claude"
+option and the Anthropic API key field were removed on purpose. This is an infrastructure decision, not a missing
+feature:
+
+- **Zero cost per user.** Every post is judged on the user's own computer. With Claude, posts were paid API calls on
+  the user's own key (every post, or ~14% with the double-check), which doesn't work for a consumer product meant
+  for a billion people.
+- **Private by construction.** Feed posts never leave the browser, and the extension makes no network calls.
+- **No setup.** Nobody has to create an Anthropic account and paste a key. The filter works as soon as it's installed.
+- **One AI path.** `npm run eval` measures exactly what ships.
+
+What we give up: the Claude double-check helped with subtle tone (engagement bait dressed up as a story). The
+"uncertain" flag from step 5 stays as the hook for a second on-device model if that turns out to be needed.
+
+Older installs: settings saved by earlier versions drop `provider`, `model` and `claudeCheck` on load, and an API
+key saved by an earlier version is deleted from `chrome.storage.local` when the extension updates.
 
 ## Model choice (evaluated 2026-10-24)
 
@@ -140,8 +157,8 @@ step is labelling a few hundred real feed posts.
 
 ## Known limitations / next steps
 
-- **Subtle tone** ("I got rejected 47 times… Agree?") can slip through. The default keyword list (`agree?`) and the
-  Claude double-check cover some of it.
+- **Subtle tone** ("I got rejected 47 times… Agree?") can slip through. The default keyword list (`agree?`) covers some
+  of it.
 - **English only** today. Swap in `multilingual-e5-small` (prefixes `query: ` / `passage: `) for global reach, and
   recalibrate `local-filter.js` CONFIG with `npm run eval`.
 - **Learn from clicks:** "Show anyway" should nudge that topic's threshold for this user (not built yet).
@@ -150,8 +167,10 @@ step is labelling a few hundred real feed posts.
 
 ## Conventions
 
+- The product is called **out**. Internal names still say `control` (`globalThis.control`, `data-control-*`
+  attributes, `control:*` messages, the `controlSettings` storage key); renaming the storage key would reset
+  everyone's saved settings.
 - No build step for `extension/`. Classic scripts hang off `globalThis.control`. Only `vendor/` and `models/` are
   generated, and both are committed so a fresh clone loads as-is.
 - Everything that can fail **fails open** (the post is shown). An AI problem must never hide content.
-- Post text is untrusted data. The Claude prompt says to ignore instructions inside posts.
 - After changing the model or thresholds, run `npm run eval` and update `CONFIG` in `shared/local-filter.js`.

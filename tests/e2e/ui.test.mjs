@@ -2,7 +2,7 @@
 // and checking that an open LinkedIn tab reacts without a reload.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openFeed, postStates, setSecrets, startMockAnthropic } from './harness.mjs';
+import { launch, openFeed, postStates } from './harness.mjs';
 import { FIXTURES } from './harness.mjs';
 
 async function withBrowser(fixture, fn) {
@@ -17,7 +17,8 @@ async function withBrowser(fixture, fn) {
 async function openOptions(context, extensionId, hash = '') {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options/options.html${hash}`);
-  await page.waitForSelector('#model option', { state: 'attached' });
+  // options.js has rendered the saved settings (#enabled is unchecked in the HTML).
+  await page.waitForSelector('#enabled:checked', { state: 'attached' });
   return page;
 }
 
@@ -64,35 +65,7 @@ for (const fixture of FIXTURES) {
         await options.waitForFunction(() => document.querySelector('#save-instructions').disabled);
       }));
 
-    test('"Try it on sample posts" shows a verdict per sample', async () => {
-      const mock = await startMockAnthropic({ delayMs: 200 });
-      try {
-        await withBrowser(fixture, async ({ context, extensionId }) => {
-          const options = await openOptions(context, extensionId, '#ai');
-          await options.fill('#instructions', 'Hide webinars.');
-          await options.check('input[name="provider"][value="anthropic"]');
-          await options.fill('#api-key', 'sk-ant-test');
-          await options.locator('#api-key').blur();
-          // Point the client at the mock (normally empty = api.anthropic.com).
-          await options.evaluate(async (url) => {
-            const S = globalThis.control.settings;
-            await S.saveSecrets({ ...(await S.loadSecrets()), anthropicBaseUrl: url });
-          }, mock.url);
-          await options.click('#test-ai');
-          await options.waitForSelector('.verdict');
-          const tags = await options.locator('.verdict .tag').allInnerTexts();
-          assert.deepEqual(
-            tags.map((t) => t.toLowerCase()),
-            ['show', 'show', 'hide', 'show'],
-          );
-          assert.equal(mock.requests.length, 1);
-        });
-      } finally {
-        await mock.close();
-      }
-    });
-
-    test('"Try it on sample posts" works on-device with no API key', () =>
+    test('"Try it on sample posts" shows a verdict per sample, on-device', () =>
       withBrowser(fixture, async ({ context, extensionId }) => {
         const options = await openOptions(context, extensionId, '#ai');
         await options.fill('#instructions', 'Hide webinars and engagement bait.');
@@ -105,16 +78,6 @@ for (const fixture of FIXTURES) {
           tags.map((t) => t.toLowerCase()),
           ['show', 'show', 'hide', 'show'],
         );
-      }));
-
-    test('"Try it" with no API key explains what is missing instead of failing', () =>
-      withBrowser(fixture, async ({ context, extensionId }) => {
-        const options = await openOptions(context, extensionId);
-        await options.check('input[name="provider"][value="anthropic"]');
-        await options.fill('#instructions', 'Hide webinars.');
-        await options.click('#test-ai');
-        await options.waitForSelector('#test-output .error');
-        assert.match(await options.innerText('#test-output'), /API key/);
       }));
 
     test('popup toggles control the open feed', () =>
@@ -138,7 +101,7 @@ for (const fixture of FIXTURES) {
         await feed.waitForTimeout(300);
         assert.equal(await feed.locator('#main').isVisible(), true);
         assert.equal(await feed.locator('.control-bar').count(), 0);
-        await popup.waitForSelector('#status:has-text("control. is off")');
+        await popup.waitForSelector('#status:has-text("out is off")');
       }));
 
     test('turning on the AI filter from the popup before setup opens settings at that section', () =>
@@ -152,33 +115,5 @@ for (const fixture of FIXTURES) {
         await options.waitForLoadState();
         assert.match(options.url(), /options\.html#ai$/);
       }));
-
-    test('an API key added later takes effect on an open feed without reloading', async () => {
-      const mock = await startMockAnthropic({ delayMs: 100 });
-      try {
-        await withBrowser(fixture, async ({ context, worker }) => {
-          await setSecrets(worker, { anthropicApiKey: '', anthropicBaseUrl: mock.url });
-          await worker.evaluate(async () => {
-            const S = globalThis.control.settings;
-            const s = await S.load();
-            s.aiFilter.enabled = true;
-            s.aiFilter.provider = 'anthropic';
-            s.aiFilter.instructions = 'Hide crypto.';
-            await S.save(s);
-          });
-          const feed = await openFeed(context);
-          await feed.waitForTimeout(800);
-          assert.equal((await postStates(feed))['1007'], 'shown');
-          await setSecrets(worker, { anthropicApiKey: 'sk-ant-test', anthropicBaseUrl: mock.url });
-          await feed.waitForFunction(
-            () => document.querySelector('[data-fixture-id="1007"]').getAttribute('data-control') === 'hidden',
-            null,
-            { timeout: 10000 },
-          );
-        });
-      } finally {
-        await mock.close();
-      }
-    });
   });
 }

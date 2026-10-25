@@ -7,12 +7,6 @@
   // TODO(keywords): placeholders only. Replace with the real list once decided.
   const PLACEHOLDER_KEYWORDS = ['internship', 'thrilled to announce', 'agree?'];
 
-  const MODELS = [
-    { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (most capable)' },
-    { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (balanced)' },
-    { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (fastest, cheapest)' },
-  ];
-
   const DEFAULTS = {
     enabled: true,
     // Feature 1: structural modes, no AI involved.
@@ -26,14 +20,11 @@
       enabled: true,
       list: PLACEHOLDER_KEYWORDS.slice(),
     },
-    // Feature 3: natural-language filter. 'local' runs a small sentence
-    // encoder on-device (free, private); 'anthropic' sends posts to Claude.
+    // Feature 3: natural-language filter, run by a small sentence encoder
+    // on-device (free, private).
     aiFilter: {
       enabled: false,
       instructions: '',
-      provider: 'local', // 'local' | 'anthropic'
-      claudeCheck: false, // local only: double-check uncertain posts with Claude
-      model: 'claude-haiku-5-5',
       holdWhileChecking: true,
     },
     // Feature 4: Unhook-style layout controls for the home page.
@@ -45,11 +36,7 @@
     debug: false,
   };
 
-  const PROVIDERS = ['local', 'anthropic'];
-
   const SETTINGS_KEY = 'controlSettings';
-  // API keys live in storage.local only, never in storage.sync.
-  const SECRETS_KEY = 'controlSecrets';
   const STATUS_KEY = 'controlStatus';
 
   function isPlainObject(v) {
@@ -72,13 +59,10 @@
     return out;
   }
 
-  // merge() plus value checks that a plain type-merge can't do. Settings saved
-  // by older versions (e.g. provider 'chrome-ai') fall back to the default.
+  // Settings as stored, cleaned up. Keys from older versions (provider,
+  // model, claudeCheck) are dropped by merge().
   function fromStored(stored) {
-    const s = merge(DEFAULTS, stored);
-    if (!PROVIDERS.includes(s.aiFilter.provider)) s.aiFilter.provider = DEFAULTS.aiFilter.provider;
-    if (!MODELS.some((m) => m.id === s.aiFilter.model)) s.aiFilter.model = DEFAULTS.aiFilter.model;
-    return s;
+    return merge(DEFAULTS, stored);
   }
 
   function syncArea() {
@@ -105,15 +89,6 @@
     });
   }
 
-  async function loadSecrets() {
-    const got = await chrome.storage.local.get(SECRETS_KEY);
-    return Object.assign({ anthropicApiKey: '', anthropicBaseUrl: '' }, got[SECRETS_KEY]);
-  }
-
-  async function saveSecrets(secrets) {
-    await chrome.storage.local.set({ [SECRETS_KEY]: secrets });
-  }
-
   // FNV-1a, 32-bit. Only used to build cache keys, not for anything secure.
   function hash(str) {
     let h = 0x811c9dc5;
@@ -125,15 +100,9 @@
   }
 
   // Identifies one configuration of the AI filter. A cached verdict is only
-  // reused while everything that can change it is unchanged. The Claude model
-  // only matters when Claude is actually asked.
-  function usesClaude(aiFilter) {
-    return aiFilter.provider === 'anthropic' || Boolean(aiFilter.claudeCheck);
-  }
-
+  // reused while the instructions are unchanged.
   function aiConfigKey(aiFilter) {
-    const model = usesClaude(aiFilter) ? aiFilter.model : '';
-    return hash([aiFilter.provider, model, aiFilter.claudeCheck ? 1 : 0, aiFilter.instructions.trim()].join('\u0000'));
+    return hash(['local', aiFilter.instructions.trim()].join('\u0000'));
   }
 
   function isAiActive(settings) {
@@ -142,22 +111,16 @@
 
   control.settings = {
     DEFAULTS,
-    MODELS,
-    PROVIDERS,
     PLACEHOLDER_KEYWORDS,
     SETTINGS_KEY,
-    SECRETS_KEY,
     STATUS_KEY,
     merge,
     fromStored,
     load,
     save,
     onChange,
-    loadSecrets,
-    saveSecrets,
     hash,
     aiConfigKey,
-    usesClaude,
     isAiActive,
   };
 })(globalThis);

@@ -14,7 +14,7 @@
     "eval": "node eval/run.mjs"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
+    "@fontsource-variable/geist": "^5.3.0",
     "@huggingface/transformers": "^4.3.1",
     "esbuild": "^0.28.2",
     "playwright": "^1.56.1"

@@ -202,6 +202,25 @@
     };
   }
 
+  // Where LinkedIn loads the next page of the feed. 2026 markup: the feed
+  // list's last child is an empty element LinkedIn watches with an
+  // IntersectionObserver (rootMargin 2000px below the screen); in some
+  // layouts it holds a "Load more" button instead. Classic markup: a
+  // "Show more feed updates" button. Returns { trigger, button }, either null.
+  const LOAD_MORE_RE = /^\s*(?:load|show) more(?: feed updates| posts)?\s*$/i;
+
+  function findFeedEnd() {
+    const list = document.querySelector('[data-testid="mainFeed"]');
+    const last = list && list.lastElementChild;
+    const trigger = last && !last.matches(POST_SELECTOR) && !last.querySelector(POST_SELECTOR) ? last : null;
+    let button = document.querySelector('.scaffold-finite-scroll__load-button');
+    if (!button && trigger) {
+      const b = trigger.querySelector('button');
+      if (b && LOAD_MORE_RE.test(b.textContent || '')) button = b;
+    }
+    return { trigger, button };
+  }
+
   // ---------- layout landmarks for the home page controls ----------
 
   const NAV_SELECTOR = '#global-nav, .global-nav';
@@ -227,6 +246,38 @@
       if (best && best.querySelectorAll(NAV_LINKS).length >= 2) return best;
     }
     return null;
+  }
+
+  // LinkedIn's logo at the start of the top bar, so the "out" button can sit
+  // next to it. Found by class if possible, otherwise as the left-most
+  // roughly square element in the left third of the bar. Returns `el`, the
+  // element to insert beside (never inside the logo's link, and outside any
+  // wrapper that holds only the logo), and `box`, the logo's own box.
+  const LOGO_SELECTOR = '.global-nav__branding-logo, .global-nav__logo';
+
+  function findLogo(bar) {
+    let logo = bar.querySelector(LOGO_SELECTOR);
+    if (!logo) {
+      const b = bar.getBoundingClientRect();
+      let bestLeft = Infinity;
+      for (const node of bar.querySelectorAll('a, div, span, svg, img, li-icon')) {
+        const r = node.getBoundingClientRect();
+        if (r.height < 20 || r.height > 60 || Math.abs(r.width - r.height) > 6) continue;
+        if (r.left - b.left > b.width / 3) continue;
+        if (r.left < bestLeft - 0.5) {
+          logo = node;
+          bestLeft = r.left;
+        }
+      }
+    }
+    if (!logo) return null;
+    const box = logo.getBoundingClientRect();
+    const link = logo.closest('a, button');
+    let el = link && link !== bar && bar.contains(link) ? link : logo;
+    while (el.parentElement && el.parentElement !== bar && el.parentElement.children.length === 1) {
+      el = el.parentElement;
+    }
+    return { el, box, logo };
   }
 
   // Left and right columns next to the feed. Found by class if possible,
@@ -263,7 +314,9 @@
     extractPost,
     getUrn,
     getElementKey,
+    findFeedEnd,
     findTopBar,
+    findLogo,
     findSidebars,
   };
 })(globalThis);
