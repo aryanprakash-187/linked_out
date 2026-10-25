@@ -146,8 +146,16 @@ html.control-debug [data-control='revealed'] {
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
-  font: 12px/1.4 system-ui, sans-serif;
-  color: var(--color-text-low-emphasis, #555);
+  /* Same type as .control-bar, which these sit in or next to. */
+  font:
+    12px/1.4 -apple-system,
+    system-ui,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  color: var(--color-text-low-emphasis, rgba(0, 0, 0, 0.6));
 }
 .control-feedback-actions button, .control-feedback-status button {
   border: 1px solid currentColor;

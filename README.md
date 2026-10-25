@@ -228,9 +228,10 @@ not change. Real-feed evaluation is still needed to measure generalization and a
 matching, conflicting examples, profile/model isolation, replacement, eviction, undo, serialized feedback,
 simulated restart persistence, failed writes, text-aware cache keys, and stale in-flight results.
 
-Integration tests mock model embeddings and the persistent store; they do not measure real-model accuracy or
-prove IndexedDB/browser behavior end to end. Full browser testing, real-feed evaluation, and feedback-search
-latency measurements remain to be done. The model benchmark above describes the original filter and must not
+Integration tests mock model embeddings and the persistent store. `tests/e2e/feedback.test.mjs` covers the
+browser side with the real model and IndexedDB: the teaching buttons, a correction re-judging the feed, Undo after
+that re-check, "Show anyway" reveals surviving a correction, and persistence across reloads. Real-feed
+evaluation and feedback-search latency measurements remain to be done. The model benchmark above describes the original filter and must not
 be interpreted as an accuracy result for personalized decisions.
 
 ### Scaling and boundaries

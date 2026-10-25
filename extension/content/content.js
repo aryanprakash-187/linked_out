@@ -21,6 +21,7 @@
     aiVerdicts: new Map(), // `${aiKey}:${urn}` -> { decision, reason }
     aiInflight: new Map(), // same key -> Promise
     lastAiError: null,
+    note: null, // message after the latest correction: { urn, instructions, text, undo, revision }
   };
 
   function log(...args) {
@@ -84,25 +85,60 @@
       const res = await chrome.runtime.sendMessage({ type: 'control:feedback', payload });
       if (!res || res.error) throw new Error(res && res.error || 'Feedback could not be saved');
       showFeedbackStatus(el, action === 'reset' ? 'Personal learning reset.' : action === 'undo' ? 'Correction undone.' : 'Preference saved on this device.', action === 'correct', res.revision);
+      if (action === 'correct' && el.hasAttribute('data-control-override')) {
+        // An explicit decision replaces a temporary "Show anyway".
+        el.removeAttribute('data-control-override');
+        el.removeAttribute('data-control-sig');
+        scheduleScan();
+      }
     } catch (err) {
       showFeedbackStatus(el, err.message || 'Feedback failed. Try again.', false);
     }
   }
 
+  // Only the latest correction can be undone, so there's one note at a time.
+  // It lives in state rather than only in the DOM because every correction
+  // re-judges the feed, which redraws the post it belongs to.
   function showFeedbackStatus(el, text, undo, revision) {
-    el.querySelector('.control-feedback-status')?.remove();
+    state.note = {
+      urn: el.getAttribute('data-control-urn'),
+      instructions: state.settings.aiFilter.instructions,
+      text,
+      undo,
+      revision,
+    };
+    for (const old of document.querySelectorAll('.control-feedback-status')) old.remove();
+    drawNote(el);
+  }
+
+  // Puts the note on its post, last in the bar (hidden) or the post (shown).
+  // A no-op when it's already there, so it's safe to call on every scan.
+  function drawNote(el) {
+    const note = state.note;
+    const current = el.querySelector('.control-feedback-status');
+    if (!note || el.getAttribute('data-control-urn') !== note.urn) return current?.remove();
+    const parent = placeholderOf(el) || el;
+    if (current && current.parentElement === parent) {
+      if (parent.lastElementChild !== current) parent.append(current);
+      return;
+    }
+    current?.remove();
     const status = document.createElement('div');
     status.className = 'control-feedback-status';
     status.setAttribute('role', 'status');
-    status.textContent = text + ' ';
-    if (undo) {
+    status.textContent = note.text + ' ';
+    if (note.undo) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = 'Undo correction';
-      button.onclick = (event) => { event.preventDefault(); event.stopPropagation(); sendFeedback(el, 'undo', undefined, revision); };
+      button.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        sendFeedback(el, 'undo', undefined, note.revision);
+      };
       status.append(button);
     }
-    (placeholderOf(el) || el).append(status);
+    parent.append(status);
   }
 
   function addFeedbackControls(el, parent, decision) {
@@ -123,15 +159,21 @@
 
   function syncFeedbackControls(el, post) {
     el.querySelector('.control-feedback-actions')?.remove();
-    if (!post || !personalActive() || rules.evaluateRules(post, state.settings, state.compiledKeywords)) return;
     const status = el.getAttribute('data-control');
-    if (!['shown', 'revealed', 'hidden'].includes(status)) return;
     const parent = status === 'hidden' ? placeholderOf(el) : el;
-    if (!parent) return;
-    const actions = document.createElement('span');
-    actions.className = 'control-feedback-actions';
-    addFeedbackControls(el, actions, status === 'hidden' ? 'show' : 'hide');
-    parent.append(actions);
+    if (
+      post &&
+      parent &&
+      personalActive() &&
+      ['shown', 'revealed', 'hidden'].includes(status) &&
+      !rules.evaluateRules(post, state.settings, state.compiledKeywords)
+    ) {
+      const actions = document.createElement('span');
+      actions.className = 'control-feedback-actions';
+      addFeedbackControls(el, actions, status === 'hidden' ? 'show' : 'hide');
+      parent.append(actions);
+    }
+    drawNote(el);
   }
 
   function setBar(el, kind, text) {
@@ -280,6 +322,7 @@
       if (status === 'hidden' && !placeholderOf(el)) markHidden(el, el.getAttribute('data-control-reason') || 'Hidden');
       if (status === 'pending' && !placeholderOf(el)) markPending(el);
       if (!el.querySelector('.control-feedback-actions')) syncFeedbackControls(el, state.posts.get(el));
+      else drawNote(el);
       return;
     }
 
@@ -387,6 +430,8 @@
   }
 
   function applySettings(settings) {
+    // Undo is refused once the instructions change (corrections belong to them).
+    if (state.note && state.note.instructions !== settings.aiFilter.instructions) state.note = null;
     state.settings = settings;
     state.generation++;
     state.aiVerdicts.clear();
@@ -396,6 +441,17 @@
     state.lastAiError = null;
     applyLayout();
     resetAll();
+    scan();
+  }
+
+  // A correction (from any tab) or a reset changes what the model says, not
+  // what the user set: re-judge every post, but keep "Show anyway" reveals and
+  // the note with Undo, which resetAll() would throw away.
+  function recheck() {
+    state.generation++;
+    state.aiVerdicts.clear();
+    state.aiInflight.clear();
+    state.lastAiError = null;
     scan();
   }
 
@@ -435,6 +491,6 @@
   S.onChange(applySettings);
   // A correction saved in any tab, or a reset in settings, re-judges the feed.
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.controlFeedbackRevision && state.settings) applySettings(state.settings);
+    if (changes.controlFeedbackRevision && state.settings) recheck();
   });
 })();
