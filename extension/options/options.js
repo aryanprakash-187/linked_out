@@ -233,6 +233,21 @@
     });
   });
 
+  $('reset-learning').addEventListener('click', async () => {
+    const button = $('reset-learning');
+    button.disabled = true;
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'control:feedback',
+        payload: { action: 'reset', instructions: settings.aiFilter.instructions },
+      });
+      if (!res || res.error) throw new Error(res && res.error || 'Reset failed');
+      $('learning-state').textContent = 'Personal learning cleared for these instructions.';
+    } catch (err) {
+      $('learning-state').textContent = err.message;
+    } finally { button.disabled = false; }
+  });
+
   // ---------- troubleshooting ----------
 
   $('clear-cache').addEventListener('click', async () => {

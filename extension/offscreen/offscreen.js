@@ -9,6 +9,17 @@ import { env, pipeline } from '../vendor/transformers.min.js';
 
 const { intent: I, localFilter: F } = globalThis.control;
 const MODEL_ID = 'Xenova/gte-small';
+const ENCODER_VERSION = MODEL_ID + ':q8:mean:normalized:v1';
+const M = control.feedbackMemory;
+let memory;
+async function getMemory() { return memory ||= await control.feedbackStore.load(); }
+// Classification and writes share a queue, avoiding lost updates across tabs.
+let operations = Promise.resolve();
+function enqueue(run) {
+  const result = operations.then(run);
+  operations = result.catch(() => {});
+  return result;
+}
 
 env.allowRemoteModels = false; // everything ships inside the extension
 env.allowLocalModels = true;
@@ -60,6 +71,8 @@ async function getProfile(instructions) {
 }
 
 async function classify({ instructions, posts }) {
+  const saved = await getMemory();
+  const profileId = instructions.trim();
   const p = await getProfile(instructions);
   const vectors = await embed(posts.map((x) => (x.text || '').slice(0, 2000)));
   const sims = vectors.map((v) => ({
@@ -70,13 +83,42 @@ async function classify({ instructions, posts }) {
   // Learn from the whole batch first so the very first batch isn't judged
   // on the prior alone.
   for (const s of sims) F.observe(s, p.stats);
-  return posts.map((post, i) => ({ key: post.key, ...F.judge(p.intent, sims[i], p.stats) }));
+  return posts.map((post, i) => ({
+    key: post.key,
+    ...(M.predict(saved.examples, { profile: profileId, encoder: ENCODER_VERSION, text: post.text, vector: vectors[i] }) ||
+      F.judge(p.intent, sims[i], p.stats)),
+  }));
 }
 
+
+async function feedback(payload) {
+  const saved = await getMemory();
+  let next;
+  if (payload.action === 'undo') {
+    if (payload.expectedRevision !== saved.revision) throw new Error('A newer correction was saved. Undo it first.');
+    next = M.undo(saved);
+  }
+  else if (payload.action === 'reset') next = {
+    revision: saved.revision + 1,
+    examples: saved.examples.filter((e) => e.profile !== payload.instructions.trim()),
+    undo: null,
+  };
+  else if (payload.action === 'correct') {
+    const [vector] = await embed([M.textOf(payload.text).slice(0, 2000)]);
+    next = M.correct(saved, {
+      profile: payload.instructions.trim(), encoder: ENCODER_VERSION,
+      text: payload.text, vector, decision: payload.decision,
+    });
+  } else throw new Error('Unknown feedback action');
+  await control.feedbackStore.save(next);
+  memory = next;
+  return { revision: next.revision, count: next.examples.filter((e) => e.profile === payload.instructions.trim()).length };
+}
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (!msg || msg.target !== 'offscreen' || msg.type !== 'control:local-classify') return;
-  classify(msg.payload)
-    .then((verdicts) => sendResponse({ verdicts }))
-    .catch((err) => sendResponse({ error: String(err && err.message ? err.message : err) }));
+  if (!msg || msg.target !== 'offscreen') return;
+  const run = msg.type === 'control:local-classify' ? async () => ({ verdicts: await classify(msg.payload) })
+    : msg.type === 'control:local-feedback' ? () => feedback(msg.payload) : null;
+  if (!run) return;
+  enqueue(run).then(sendResponse).catch((err) => sendResponse({ error: String(err && err.message ? err.message : err) }));
   return true;
 });
