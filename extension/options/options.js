@@ -23,7 +23,7 @@
     },
     {
       author: 'Growth Academy',
-      text: 'FREE webinar this Thursday: 7 LinkedIn hacks to 10x your personal brand. Only 50 seats left. Comment "BRAND" and I\'ll DM you the link!',
+      text: 'FREE webinar this Thursday: 7 X hacks to 10x your personal brand. Only 50 seats left. Comment "BRAND" and I\'ll DM you the link!',
     },
     {
       author: 'Marcus Chen',
@@ -52,10 +52,10 @@
 
   function render() {
     $('enabled').checked = settings.enabled;
-    $('master-title').textContent = settings.enabled ? 'control. is on' : 'control. is off';
+    $('master-title').textContent = settings.enabled ? 'Control-X is on' : 'Control-X is off';
     $('master-hint').textContent = settings.enabled
-      ? 'Turn off to see LinkedIn untouched.'
-      : 'LinkedIn is untouched until you turn this back on.';
+      ? 'Turn off to see X untouched.'
+      : 'X is untouched until you turn this back on.';
     document.body.classList.toggle('off', !settings.enabled);
     for (const input of document.querySelectorAll('input[data-path]')) {
       input.checked = Boolean(get(settings, input.dataset.path));
@@ -102,7 +102,7 @@
 
   $('enabled').addEventListener('change', (e) => {
     settings.enabled = e.target.checked;
-    save(settings.enabled ? 'control. is on' : 'control. is off');
+    save(settings.enabled ? 'Control-X is on' : 'Control-X is off');
   });
 
   for (const input of document.querySelectorAll('input[data-path]')) {

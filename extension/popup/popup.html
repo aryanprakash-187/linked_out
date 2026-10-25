@@ -3,39 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>control.</title>
+    <title>Control-X</title>
     <link rel="stylesheet" href="../shared/ui.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="top">
-      <span class="brand">control.</span>
-      <label class="master" title="Turn control. on or off">
+      <span class="brand">Control-X</span>
+      <label class="master" title="Turn Control-X on or off">
         <span id="master-label">On</span>
         <input type="checkbox" class="switch" id="enabled" />
       </label>
     </header>
 
+    <p class="muted">Cut out the junk</p>
     <p id="status" class="status muted">…</p>
     <p id="ai-error" class="error" hidden></p>
 
     <section id="controls">
-      <label class="row">
-        <span class="label">Blank home page<span class="hint">Only the top bar stays</span></span>
-        <input type="checkbox" class="switch" data-path="layout.blankHome" />
-      </label>
-      <label class="row">
-        <span class="label">Hide promoted posts</span>
-        <input type="checkbox" class="switch" data-path="modes.hidePromoted" />
-      </label>
-      <label class="row">
-        <span class="label">Hide posts liked or commented on by others</span>
-        <input type="checkbox" class="switch" data-path="modes.hideSocialActivity" />
-      </label>
-      <label class="row">
-        <span class="label">Hide suggested posts</span>
-        <input type="checkbox" class="switch" data-path="modes.hideSuggested" />
-      </label>
+
+
+
+
       <label class="row">
         <span class="label">Keyword filter<span class="hint" id="kw-hint"></span></span>
         <input type="checkbox" class="switch" data-path="keywords.enabled" />

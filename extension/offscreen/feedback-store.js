@@ -3,7 +3,7 @@
   let database;
   function open() {
     if (!database) database = new Promise((resolve, reject) => {
-      const request = indexedDB.open('control-personal-feedback', 1);
+      const request = indexedDB.open('control-x-personal-feedback', 1);
       request.onupgradeneeded = () => request.result.createObjectStore('memory');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => { database = null; reject(request.error); };

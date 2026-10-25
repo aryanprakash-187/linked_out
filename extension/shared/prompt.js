@@ -29,7 +29,7 @@
 
   function buildSystemPrompt(instructions) {
     return [
-      "You filter one person's LinkedIn home feed so their attention only goes to posts they want to see.",
+      "You filter one person's X home timeline so their attention only goes to posts they want to see.",
       '',
       'Their instructions, in their own words:',
       '<instructions>',

@@ -17,8 +17,8 @@
     enabled: true,
     // Feature 1: structural modes, no AI involved.
     modes: {
-      hidePromoted: true,
-      hideSocialActivity: true, // "X likes this", "X commented on this", ...
+      hidePromoted: false,
+      hideSocialActivity: false, // "X likes this", "X commented on this", ...
       hideSuggested: false,
     },
     // Feature 2: keyword filter.
@@ -47,10 +47,10 @@
 
   const PROVIDERS = ['local', 'anthropic'];
 
-  const SETTINGS_KEY = 'controlSettings';
+  const SETTINGS_KEY = 'controlXSettings';
   // API keys live in storage.local only, never in storage.sync.
-  const SECRETS_KEY = 'controlSecrets';
-  const STATUS_KEY = 'controlStatus';
+  const SECRETS_KEY = 'controlXSecrets';
+  const STATUS_KEY = 'controlXStatus';
 
   function isPlainObject(v) {
     return v !== null && typeof v === 'object' && !Array.isArray(v);

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "control.",
-  "short_name": "control.",
+  "name": "Control-X",
+  "short_name": "Control-X",
   "version": "0.1.0",
-  "description": "Decide what gets your attention on LinkedIn. Hide promoted posts, network activity, keywords, or anything you describe, with on-device AI.",
+  "description": "Cut out the junk. Filter your X home feed by text with private, on-device AI and personal feedback.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -11,7 +11,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "control.",
+    "default_title": "Control-X — Cut out the junk",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -35,13 +35,15 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.linkedin.com/*",
-        "https://linkedin.com/*"
+        "https://x.com/*",
+        "https://www.x.com/*",
+        "https://twitter.com/*",
+        "https://www.twitter.com/*"
       ],
       "js": [
         "shared/settings.js",
         "shared/rules.js",
-        "content/linkedin.js",
+        "content/x.js",
         "content/content.js"
       ],
       "css": [

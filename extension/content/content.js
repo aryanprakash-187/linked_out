@@ -1,11 +1,11 @@
-// Content script for linkedin.com. Applies the layout controls (blank home,
+// Content script for x.com. Applies the layout controls (blank home,
 // sidebars) and decides, post by post, what stays on the home feed:
 //   1. modes (promoted, network activity, suggested)   instant
 //   2. keywords                                        instant
 //   3. AI filter (your own words)                      async, batched in background
 (function () {
   const control = globalThis.control;
-  const { linkedin, rules } = control;
+  const { x: linkedin, rules } = control;
   const S = control.settings;
 
   const AI_TIMEOUT_MS = 30000;
@@ -48,7 +48,7 @@
   }
 
   // Tags the top bar and sidebars so the CSS can find them even when
-  // LinkedIn's class names are hashed. Re-run on every scan because LinkedIn
+  // X's class names are hashed. Re-run on every scan because X
   // re-renders; cheap when the tags are already in place.
   function markLandmarks() {
     if (!linkedin.isHomePath(location.pathname)) return;
@@ -102,7 +102,7 @@
       button.onclick = (event) => { event.preventDefault(); event.stopPropagation(); sendFeedback(el, 'undo', undefined, revision); };
       status.append(button);
     }
-    (placeholderOf(el) || el).append(status);
+    el.append(status);
   }
 
   function addFeedbackControls(el, parent, decision) {
@@ -160,7 +160,7 @@
     const label = bar.querySelector('.control-bar__label');
     label.textContent = '';
     const brand = document.createElement('b');
-    brand.textContent = 'control.';
+    brand.textContent = 'Control-X';
     label.append(brand, ' ' + text);
     bar.querySelector('.control-bar__show').hidden = kind === 'pending';
   }
@@ -187,7 +187,6 @@
     el.removeAttribute('data-control-urn');
     el.removeAttribute('data-control-reason');
     el.querySelector('.control-feedback-actions')?.remove();
-    el.querySelector('.control-feedback-status')?.remove();
     const bar = placeholderOf(el);
     if (bar) bar.remove();
   }
@@ -253,7 +252,7 @@
           reason: res.reason || 'Filtered by your prompt',
         });
       }
-      // Update every element showing this post (LinkedIn may have swapped it).
+      // Update every element showing this post (X may have swapped it).
       // Posts waiting on this verdict are 'pending' (blurred) or, with
       // "blur while checking" off, already 'shown'.
       for (const el of linkedin.findPosts(document)) {
@@ -269,12 +268,19 @@
   }
 
   function processPost(el) {
+    const elementKey = linkedin.getElementKey(el);
+    if (el.getAttribute('data-control-element-key') !== elementKey) {
+      el.removeAttribute('data-control-override');
+      el.querySelector('.control-feedback-status')?.remove();
+      el.setAttribute('data-control-element-key', elementKey);
+      clearPost(el);
+    }
     if (el.getAttribute('data-control-override') === '1') return;
     const s = state.settings;
     const sig = state.generation + '|' + linkedin.getElementKey(el);
 
     if (el.getAttribute('data-control-sig') === sig) {
-      // Already judged. LinkedIn sometimes re-renders a post's children, which
+      // Already judged. X sometimes re-renders a post's children, which
       // removes our bar; put it back if so.
       const status = el.getAttribute('data-control');
       if (status === 'hidden' && !placeholderOf(el)) markHidden(el, el.getAttribute('data-control-reason') || 'Hidden');
@@ -313,6 +319,10 @@
     if (!state.settings) return;
     if (location.pathname !== state.path) {
       state.path = location.pathname;
+      state.generation++;
+      state.aiVerdicts.clear();
+      state.aiInflight.clear();
+      resetAll();
       applyLayout();
     } else {
       markLandmarks();
@@ -359,14 +369,14 @@
   S.load().then((settings) => {
     applySettings(settings);
     new MutationObserver(scheduleScan).observe(html, { childList: true, subtree: true });
-    // LinkedIn is a single-page app; catch navigations that don't mutate much.
+    // X is a single-page app; catch navigations that don't mutate much.
     setInterval(() => {
       if (location.pathname !== state.path) scan();
     }, 500);
   });
   S.onChange(applySettings);
-  // A newly added API key should take effect without reloading LinkedIn.
+  // A newly added API key should take effect without reloading X.
   chrome.storage.onChanged.addListener((changes) => {
-    if ((changes[S.SECRETS_KEY] || changes.controlFeedbackRevision) && state.settings) applySettings(state.settings);
+    if ((changes[S.SECRETS_KEY] || changes.controlXFeedbackRevision) && state.settings) applySettings(state.settings);
   });
 })();

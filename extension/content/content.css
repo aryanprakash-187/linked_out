@@ -4,11 +4,11 @@
 
 /* ---------- posts ---------- */
 
-[data-control='hidden'] > :not(.control-bar) {
+[data-control='hidden'] > :not(.control-bar):not(.control-feedback-status) {
   display: none !important;
 }
 
-[data-control='pending'] > :not(.control-bar) {
+[data-control='pending'] > :not(.control-bar):not(.control-feedback-status) {
   filter: blur(6px);
   opacity: 0.35;
   pointer-events: none;

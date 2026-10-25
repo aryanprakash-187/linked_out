@@ -16,9 +16,9 @@ const BATCH_SIZE = 8;
 const BATCH_WAIT_MS = 350; // gather posts that load together into one request
 const MAX_CONCURRENT = 2;
 const AI_TIMEOUT_MS = 25000;
-const CACHE_KEY = 'controlVerdicts';
+const CACHE_KEY = 'controlXVerdicts';
 const CACHE_MAX = 3000;
-const FEEDBACK_REVISION_KEY = 'controlFeedbackRevision';
+const FEEDBACK_REVISION_KEY = 'controlXFeedbackRevision';
 async function feedbackRevision() {
   return (await chrome.storage.local.get(FEEDBACK_REVISION_KEY))[FEEDBACK_REVISION_KEY] || 0;
 }

@@ -67,7 +67,7 @@
     const status = $('status');
     const errorBox = $('ai-error');
     // ?tabId= lets the end-to-end tests point a popup opened in its own tab
-    // at the LinkedIn tab.
+    // at the X tab.
     const forced = Number(new URLSearchParams(location.search).get('tabId'));
     const [tab] = forced ? [{ id: forced }] : await chrome.tabs.query({ active: true, currentWindow: true });
     let stats = null;
@@ -75,15 +75,15 @@
       try {
         stats = await chrome.tabs.sendMessage(tab.id, { type: 'control:stats' });
       } catch {
-        stats = null; // not a LinkedIn tab, or the page loaded before control.
+        stats = null; // not a X tab, or the page loaded before Control-X
       }
     }
     if (!settings.enabled) {
-      status.textContent = 'control. is off. LinkedIn looks the way LinkedIn wants.';
+      status.textContent = 'Control-X is off. X looks the way X wants.';
     } else if (!stats) {
-      status.textContent = 'Open LinkedIn to see control. at work.';
+      status.textContent = 'Open X to see Control-X at work.';
     } else if (!stats.onFeed) {
-      status.textContent = 'control. filters your home feed. Other pages are left alone.';
+      status.textContent = 'Control-X filters your home feed. Other pages are left alone.';
     } else if (settings.layout.blankHome) {
       status.textContent = 'Home page is blank. Use the top bar to go where you meant to go.';
     } else {

@@ -57,7 +57,7 @@ test('isPromotedLabel', () => {
 });
 
 test('evaluateModes respects each toggle', () => {
-  const modes = defaults().modes;
+  const modes = { hidePromoted: true, hideSocialActivity: true, hideSuggested: false };
   assert.deepEqual(rules.evaluateModes({ isPromoted: true }, modes), { kind: 'promoted', reason: 'Promoted' });
   const social = { headerKind: 'social', headerText: 'Sam Ortiz likes this' };
   assert.equal(rules.evaluateModes(social, modes).reason, 'Sam Ortiz likes this');
@@ -110,6 +110,7 @@ test('keywords: non-English letters count as word characters', () => {
 
 test('evaluateRules: modes win over keywords; keywords obey their toggle', () => {
   const s = defaults();
+  s.modes.hidePromoted = true;
   s.keywords.list = ['webinar'];
   const compiled = rules.compileKeywords(s.keywords.list);
   const post = { text: 'Join our webinar', isPromoted: true };

@@ -3,49 +3,26 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>control. settings</title>
+    <title>Control-X settings</title>
     <link rel="stylesheet" href="../shared/ui.css" />
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
     <main>
       <header class="page-head">
-        <h1><span class="brand">control.</span></h1>
-        <p class="muted">Your attention is limited. Decide what on LinkedIn gets it.</p>
+        <h1><span class="brand">Control-X</span></h1>
+        <p class="muted">Cut out the junk. Your feed, your preferences.</p>
         <label class="row master">
           <span class="label"
-            ><strong id="master-title">control. is on</strong
-            ><span class="hint" id="master-hint">Turn off to see LinkedIn untouched.</span></span
+            ><strong id="master-title">Control-X is on</strong
+            ><span class="hint" id="master-hint">Turn off to see X untouched.</span></span
           >
           <input type="checkbox" class="switch" id="enabled" />
         </label>
       </header>
 
       <div id="sections">
-        <section class="card" id="modes">
-          <h2>Hide by post type</h2>
-          <p class="muted">Instant, and no AI involved.</p>
-          <label class="row">
-            <span class="label">Promoted posts<span class="hint">Ads in your feed</span></span>
-            <input type="checkbox" class="switch" data-path="modes.hidePromoted" />
-          </label>
-          <label class="row">
-            <span class="label"
-              >Posts shown because someone else interacted<span class="hint"
-                >“Jane likes this”, “Sam commented on this”, “Alex reposted this”</span
-              ></span
-            >
-            <input type="checkbox" class="switch" data-path="modes.hideSocialActivity" />
-          </label>
-          <label class="row">
-            <span class="label"
-              >Suggested posts<span class="hint">Posts LinkedIn recommends from people you don’t follow</span></span
-            >
-            <input type="checkbox" class="switch" data-path="modes.hideSuggested" />
-          </label>
-        </section>
-
-        <section class="card" id="keywords">
+<section class="card" id="keywords">
           <div class="card-head">
             <h2>Hide by keyword</h2>
             <input type="checkbox" class="switch" data-path="keywords.enabled" aria-label="Keyword filter on" />
@@ -57,7 +34,7 @@
             id="keyword-list"
             rows="6"
             spellcheck="false"
-            placeholder="internship&#10;thrilled to announce"
+            placeholder="giveaway&#10;airdrop"
           ></textarea>
           <p class="hint-line muted">
             <code>internship</code> also matches “internships” · <code>intern*</code> matches anything starting with
@@ -72,13 +49,13 @@
             <input type="checkbox" class="switch" data-path="aiFilter.enabled" aria-label="AI filter on" />
           </div>
           <p class="muted">
-            Tell control. in your own words. A small AI model on your own computer reads each post on your home feed and
+            Tell Control-X in your own words. A small AI model on your own computer reads each post’s text on your X home timeline and
             hides the ones that don’t fit.
           </p>
           <textarea
             id="instructions"
             rows="5"
-            placeholder="Examples:&#10;Only show me posts about bioinformatics and computational biology.&#10;Hide posts promoting courses, webinars or newsletters.&#10;No motivational stories or humblebrags."
+            placeholder="Examples:&#10;Hide crypto promotions and engagement bait.&#10;Only show machine learning research and programming."
           ></textarea>
           <div class="actions">
             <button class="btn primary" id="save-instructions" disabled>Save</button>
@@ -86,7 +63,7 @@
           </div>
 
           <div id="understood" class="understood" hidden>
-            <h3>How control. understood you</h3>
+            <h3>How Control-X understood you</h3>
             <ul id="understood-list"></ul>
           </div>
 
@@ -157,33 +134,7 @@
           </div>
         </section>
 
-        <section class="card" id="layout">
-          <h2>Home page</h2>
-          <p class="muted">
-            Applies to linkedin.com/feed only. Jobs, messaging, your network and profiles are untouched.
-          </p>
-          <label class="row">
-            <span class="label"
-              >Blank home page<span class="hint"
-                >Hide the whole home page. Only the top bar stays, so you can still go to My Network, Jobs,
-                Messaging…</span
-              ></span
-            >
-            <input type="checkbox" class="switch" data-path="layout.blankHome" />
-          </label>
-          <label class="row">
-            <span class="label">Hide left sidebar<span class="hint">Your profile card and shortcuts</span></span>
-            <input type="checkbox" class="switch" data-path="layout.hideLeftSidebar" />
-          </label>
-          <label class="row">
-            <span class="label"
-              >Hide right sidebar<span class="hint">LinkedIn News, “Add to your feed”, ads</span></span
-            >
-            <input type="checkbox" class="switch" data-path="layout.hideRightSidebar" />
-          </label>
-        </section>
-
-        <section class="card" id="advanced">
+<section class="card" id="advanced">
           <h2>Troubleshooting</h2>
           <label class="row">
             <span class="label"

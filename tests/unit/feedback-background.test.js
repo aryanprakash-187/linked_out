@@ -33,7 +33,7 @@ function start() {
             calls++;
             return pending ? pending : { verdicts: msg.payload.posts.map(p => ({ key: p.key, decision: 'hide', reason: 'topic', uncertain: false })) };
           }
-          return { revision: (data.controlFeedbackRevision || 0) + 1, count: 1 };
+          return { revision: (data.controlXFeedbackRevision || 0) + 1, count: 1 };
         },
       },
     },
@@ -61,7 +61,7 @@ test('a result from before a feedback revision cannot be cached or hide a post',
   app.delay(new Promise(done => { resolve = done; }));
   const response = app.send(classify('a'));
   while (!app.calls) await new Promise(done => setTimeout(done, 1));
-  app.data.controlFeedbackRevision = 1;
+  app.data.controlXFeedbackRevision = 1;
   resolve({ verdicts: [{ key: 'p1', decision: 'hide', reason: 'old', uncertain: false }] });
   const verdict = await response;
   assert.equal(verdict.decision, 'show');

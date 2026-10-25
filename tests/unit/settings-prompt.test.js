@@ -8,7 +8,7 @@ const { settings: S, prompt: P } = globalThis.control;
 test('merge fills missing keys from defaults and drops unknown ones', () => {
   const merged = S.merge(S.DEFAULTS, { modes: { hidePromoted: false }, bogus: 1 });
   assert.equal(merged.modes.hidePromoted, false);
-  assert.equal(merged.modes.hideSocialActivity, true);
+  assert.equal(merged.modes.hideSocialActivity, S.DEFAULTS.modes.hideSocialActivity);
   assert.deepEqual(merged.keywords.list, S.PLACEHOLDER_KEYWORDS);
   assert.equal('bogus' in merged, false);
 });
